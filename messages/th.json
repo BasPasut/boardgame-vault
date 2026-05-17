@@ -1,0 +1,98 @@
+{
+  "nav": {
+    "home": "หน้าแรก",
+    "games": "เกม",
+    "language": "TH"
+  },
+  "landing": {
+    "tagline": "บอร์ดเกมที่คุณรัก",
+    "taglineBold": "เล่นได้ทางออนไลน์",
+    "description": "สร้างห้อง แชร์ลิงก์ และเล่นกับเพื่อนได้ทุกที่ทั่วโลก ไม่จำเป็นต้องซื้อกล่องราคาแพง",
+    "createSession": "สร้างห้อง",
+    "joinSession": "เข้าร่วมห้อง",
+    "enterCode": "ใส่รหัสห้อง...",
+    "join": "เข้าร่วม",
+    "gamesTitle": "เกมใน Vault",
+    "comingSoon": "เร็วๆ นี้",
+    "playNow": "เล่นเลย",
+    "players": "ผู้เล่น",
+    "available": "พร้อมเล่น"
+  },
+  "session": {
+    "create": "สร้างห้อง",
+    "selectGame": "เลือกเกม",
+    "yourName": "ชื่อของคุณ",
+    "namePlaceholder": "ใส่ชื่อของคุณ...",
+    "createRoom": "สร้างห้อง",
+    "joinRoom": "เข้าร่วมห้อง",
+    "roomCode": "รหัสห้อง",
+    "codePlaceholder": "ใส่รหัส 6 หลัก...",
+    "share": "แชร์รหัสนี้กับเพื่อน",
+    "waiting": "รอผู้เล่น...",
+    "players": "ผู้เล่น",
+    "startGame": "เริ่มเกม",
+    "needMore": "ต้องการผู้เล่นอย่างน้อย {min} คนเพื่อเริ่ม",
+    "copyCode": "คัดลอกรหัส",
+    "copied": "คัดลอกแล้ว!"
+  },
+  "lobby": {
+    "title": "หมู่บ้านรอคอย",
+    "subtitle": "รวบรวมชาวเมืองก่อนที่ความมืดจะมาถึง...",
+    "host": "โฮสต์",
+    "you": "คุณ",
+    "ready": "พร้อม",
+    "waitingForHost": "รอ Storyteller เริ่มเกม...",
+    "minPlayersNeeded": "ต้องการผู้เล่นอีก {count} คน"
+  },
+  "game": {
+    "day": "กลางวัน",
+    "night": "กลางคืน",
+    "alive": "มีชีวิต",
+    "dead": "ตาย",
+    "good": "ฝ่ายดี",
+    "evil": "ฝ่ายชั่ว",
+    "townsfolk": "ชาวเมือง",
+    "outsider": "คนนอก",
+    "minion": "ลูกน้อง",
+    "demon": "ปีศาจ",
+    "storyteller": "ผู้เล่าเรื่อง"
+  },
+  "roleReveal": {
+    "title": "บทบาทของคุณ",
+    "tapToReveal": "แตะเพื่อเปิดเผยบทบาท",
+    "keepSecret": "เก็บเป็นความลับจากคนอื่น!",
+    "yourTeam": "ทีมของคุณ",
+    "ability": "ความสามารถ",
+    "understood": "เข้าใจบทบาทของตัวเองแล้ว"
+  },
+  "dayPhase": {
+    "title": "วันที่ {number}",
+    "subtitle": "ถกเถียงกันว่าใครคือปีศาจ...",
+    "nominate": "เสนอชื่อ",
+    "nominations": "การเสนอชื่อ",
+    "currentNomination": "ผู้ถูกเสนอชื่อ",
+    "votes": "คะแนนโหวต",
+    "vote": "โหวต",
+    "executed": "ถูกประหาร",
+    "noExecution": "หมู่บ้านเลือกที่จะไม่ประหารวันนี้",
+    "endDay": "สิ้นสุดวัน (กลางคืนมาถึง)"
+  },
+  "nightPhase": {
+    "title": "คืนที่ {number}",
+    "subtitle": "หมู่บ้านหลับใหล...",
+    "storytellerView": "มุมมอง Storyteller",
+    "wakePlayer": "ปลุก",
+    "playerWoken": "{name} ตื่นแล้ว",
+    "markDead": "ทำเครื่องหมายว่าตาย",
+    "endNight": "สิ้นสุดคืน (รุ่งเช้ามาถึง)",
+    "order": "ลำดับการปลุก"
+  },
+  "victory": {
+    "goodWins": "ฝ่ายดีชนะ!",
+    "evilWins": "ฝ่ายชั่วชนะ!",
+    "goodWinsDesc": "ปีศาจถูกสังหารแล้ว หมู่บ้านธอร์นวิครอดพ้น!",
+    "evilWinsDesc": "ความมืดครอบงำธอร์นวิค ปีศาจครองราชย์!",
+    "playAgain": "เล่นอีกครั้ง",
+    "backToHome": "กลับหน้าแรก"
+  }
+}

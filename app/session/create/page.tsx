@@ -1,0 +1,165 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { generateSessionCode, generatePlayerId } from "@/lib/utils/session";
+import { Suspense } from "react";
+
+const GAMES = [
+  { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "เงามืดเหนือธอร์นวิค" }, players: "5–15", available: true },
+  { id: "werewolf", name: { en: "Werewolf", th: "หมาป่า" }, players: "6–20", available: false },
+  { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
+];
+
+function CreateSessionForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const defaultGame = searchParams.get("game") ?? "shadows-over-thornwick";
+
+  const [lang, setLang] = useState<"en" | "th">("en");
+  const [name, setName] = useState("");
+  const [selectedGame, setSelectedGame] = useState(defaultGame);
+  const [loading, setLoading] = useState(false);
+
+  const t = {
+    en: {
+      back: "← Back",
+      title: "Create Session",
+      subtitle: "Set up your game room",
+      selectGame: "Select Game",
+      yourName: "Your Name (Storyteller)",
+      namePlaceholder: "Enter your name...",
+      create: "Create Room",
+      creating: "Creating...",
+      comingSoon: "Coming Soon",
+    },
+    th: {
+      back: "← กลับ",
+      title: "สร้างห้อง",
+      subtitle: "ตั้งค่าห้องเกมของคุณ",
+      selectGame: "เลือกเกม",
+      yourName: "ชื่อของคุณ (Storyteller)",
+      namePlaceholder: "ใส่ชื่อของคุณ...",
+      create: "สร้างห้อง",
+      creating: "กำลังสร้าง...",
+      comingSoon: "เร็วๆ นี้",
+    },
+  }[lang];
+
+  const handleCreate = async () => {
+    if (!name.trim() || !selectedGame) return;
+    setLoading(true);
+
+    const code = generateSessionCode();
+    const playerId = generatePlayerId();
+
+    // Store host info in localStorage for this session
+    localStorage.setItem(`bgv_player_${code}`, JSON.stringify({
+      id: playerId,
+      name: name.trim(),
+      isStoryteller: true,
+    }));
+
+    router.push(`/session/${code}?game=${selectedGame}&host=true`);
+  };
+
+  return (
+    <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
+      <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url('/images/platform/bg-create-session.png')", backgroundSize: "cover", backgroundPosition: "center" }} />
+
+      <div className="relative z-10 max-w-2xl mx-auto px-6 py-10">
+        {/* Nav */}
+        <div className="flex items-center justify-between mb-10">
+          <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">
+            {t.back}
+          </Link>
+          <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">
+            {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
+          </button>
+        </div>
+
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
+            {t.title}
+          </h1>
+          <p style={{ color: "#7a6a5a" }}>{t.subtitle}</p>
+        </div>
+
+        {/* Form card */}
+        <div className="gothic-card rounded-2xl p-8 space-y-8">
+          {/* Game selection */}
+          <div>
+            <label className="block text-sm font-medium mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              {t.selectGame}
+            </label>
+            <div className="space-y-3">
+              {GAMES.map((game) => (
+                <button
+                  key={game.id}
+                  onClick={() => game.available && setSelectedGame(game.id)}
+                  disabled={!game.available}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all text-left ${
+                    selectedGame === game.id
+                      ? "border-yellow-600/80 bg-yellow-900/20"
+                      : game.available
+                      ? "border-yellow-900/30 hover:border-yellow-700/50"
+                      : "border-slate-800/30 opacity-40 cursor-not-allowed"
+                  }`}
+                >
+                  <div>
+                    <div className="font-medium" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{game.name[lang]}</div>
+                    <div className="text-xs mt-0.5" style={{ color: "#5a4a3a" }}>{game.players} players</div>
+                  </div>
+                  {!game.available && (
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
+                      {t.comingSoon}
+                    </span>
+                  )}
+                  {selectedGame === game.id && (
+                    <span className="text-yellow-400">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Name input */}
+          <div>
+            <label className="block text-sm font-medium mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              {t.yourName}
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t.namePlaceholder}
+              maxLength={20}
+              className="w-full px-4 py-3 rounded-xl focus:outline-none transition-colors"
+              style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+          </div>
+
+          {/* Create button */}
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || loading}
+            className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ fontFamily: "var(--font-gothic)" }}
+          >
+            {loading ? t.creating : `⚔ ${t.create}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function CreateSessionPage() {
+  return (
+    <Suspense>
+      <CreateSessionForm />
+    </Suspense>
+  );
+}

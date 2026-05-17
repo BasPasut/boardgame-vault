@@ -1,26 +1,252 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-vault-gold: #d4af37;
+  --color-vault-red: #8b1a1a;
+  --color-vault-purple: #2d1b4e;
+  --color-vault-navy: #0d0a1a;
+  --color-vault-parchment: #e8d5b0;
+  --color-vault-mist: #4a6fa5;
+  --font-sans: var(--font-body);
+  --font-display: var(--font-gothic);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #0d0a1a;
+  --foreground: #e8d5b0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), "Inter", sans-serif;
+  overflow-x: hidden;
+}
+
+/* Gothic scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0a1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 3px;
+}
+
+/* Fog animation */
+@keyframes fog-drift {
+  0% { transform: translateX(-10%) scaleY(1); opacity: 0.4; }
+  50% { transform: translateX(5%) scaleY(1.1); opacity: 0.6; }
+  100% { transform: translateX(-10%) scaleY(1); opacity: 0.4; }
+}
+
+@keyframes fog-drift-2 {
+  0% { transform: translateX(5%) scaleY(1); opacity: 0.3; }
+  50% { transform: translateX(-8%) scaleY(0.95); opacity: 0.5; }
+  100% { transform: translateX(5%) scaleY(1); opacity: 0.3; }
+}
+
+@keyframes float-up {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes candle-flicker {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  25% { opacity: 0.92; filter: brightness(0.95); }
+  50% { opacity: 0.98; filter: brightness(1.05); }
+  75% { opacity: 0.88; filter: brightness(0.9); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(212, 175, 55, 0.6); }
+}
+
+@keyframes blood-drip {
+  0% { transform: scaleY(0); transform-origin: top; }
+  100% { transform: scaleY(1); transform-origin: top; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.fog-layer-1 {
+  animation: fog-drift 12s ease-in-out infinite;
+}
+
+.fog-layer-2 {
+  animation: fog-drift-2 18s ease-in-out infinite;
+}
+
+.float-animation {
+  animation: float-up 4s ease-in-out infinite;
+}
+
+.candle-flicker {
+  animation: candle-flicker 3s ease-in-out infinite;
+}
+
+.pulse-gold {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Gold shimmer text */
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    #d4af37 0%,
+    #f5d76e 30%,
+    #d4af37 50%,
+    #f5d76e 70%,
+    #d4af37 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
+}
+
+/* Gothic card */
+.gothic-card {
+  background: linear-gradient(135deg, rgba(45, 27, 78, 0.8) 0%, rgba(13, 10, 26, 0.9) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.gothic-card:hover {
+  border-color: rgba(212, 175, 55, 0.7);
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.2), inset 0 0 30px rgba(212, 175, 55, 0.05);
+  transform: translateY(-4px);
+}
+
+/* Role card flip */
+.role-card-container {
+  perspective: 1000px;
+}
+
+.role-card-inner {
+  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.role-card-inner.flipped {
+  transform: rotateY(180deg);
+}
+
+.role-card-front,
+.role-card-back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.role-card-back {
+  transform: rotateY(180deg);
+}
+
+/* Particle dots (fireflies) */
+.firefly {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #d4af37;
+  box-shadow: 0 0 8px #d4af37, 0 0 16px rgba(212, 175, 55, 0.5);
+}
+
+/* Gothic divider */
+.gothic-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: rgba(212, 175, 55, 0.5);
+}
+
+.gothic-divider::before,
+.gothic-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.4), transparent);
+}
+
+/* Gradient overlays */
+.bg-vault-gradient {
+  background: radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 60%);
+}
+
+.bg-card-gradient {
+  background: linear-gradient(135deg, #1a0a2e 0%, #0d0a1a 100%);
+}
+
+/* Text glow effects */
+.text-glow-gold {
+  text-shadow: 0 0 20px rgba(212, 175, 55, 0.8), 0 0 40px rgba(212, 175, 55, 0.4);
+}
+
+.text-glow-red {
+  text-shadow: 0 0 20px rgba(139, 26, 26, 0.8), 0 0 40px rgba(139, 26, 26, 0.4);
+}
+
+/* Button styles */
+.btn-gothic-primary {
+  background: linear-gradient(135deg, #8b1a1a 0%, #5c1010 100%);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  color: #e8d5b0;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.1em;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-gothic-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.btn-gothic-primary:hover::before {
+  opacity: 1;
+}
+
+.btn-gothic-primary:hover {
+  border-color: rgba(212, 175, 55, 0.9);
+  box-shadow: 0 0 20px rgba(139, 26, 26, 0.5), 0 0 40px rgba(212, 175, 55, 0.2);
+}
+
+.btn-gothic-secondary {
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  color: #d4af37;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.1em;
+  transition: all 0.3s ease;
+}
+
+.btn-gothic-secondary:hover {
+  background: rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.8);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
 }

@@ -1,65 +1,242 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
 
-export default function Home() {
+const GAMES = [
+  {
+    id: "shadows-over-thornwick",
+    name: { en: "Shadows Over Thornwick", th: "เงามืดเหนือธอร์นวิค" },
+    description: {
+      en: "A social deduction game of murder and mystery in the cursed village of Thornwick.",
+      th: "เกมสืบสวนสังคมเกี่ยวกับการฆาตกรรมและความลึกลับในหมู่บ้านต้องสาป ธอร์นวิค",
+    },
+    players: "5–15",
+    image: "/images/games/shadows-over-thornwick/cover.png",
+    available: true,
+    theme: "from-purple-950 to-red-950",
+    badge: "bg-red-900/60 text-red-200",
+  },
+  {
+    id: "werewolf",
+    name: { en: "Werewolf", th: "หมาป่า" },
+    description: {
+      en: "Classic social deduction. Villagers vs Werewolves in a battle of wits and deception.",
+      th: "เกมคลาสสิก ชาวบ้าน vs หมาป่า ในการต่อสู้ด้วยปัญญาและการหลอกลวง",
+    },
+    players: "6–20",
+    image: null,
+    available: false,
+    theme: "from-slate-900 to-stone-900",
+    badge: "bg-slate-700/60 text-slate-300",
+  },
+  {
+    id: "secret-hitler",
+    name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" },
+    description: {
+      en: "Liberals vs Fascists in a political game of hidden roles and power struggles.",
+      th: "เสรีนิยม vs ฟาสซิสต์ เกมการเมืองของบทบาทซ่อนเร้นและการแย่งชิงอำนาจ",
+    },
+    players: "5–10",
+    image: null,
+    available: false,
+    theme: "from-amber-950 to-red-900",
+    badge: "bg-amber-900/60 text-amber-200",
+  },
+];
+
+export default function HomePage() {
+  const [lang, setLang] = useState<"en" | "th">("en");
+  const [joinCode, setJoinCode] = useState("");
+
+  const t = {
+    en: {
+      tagline: "Your Physical Board Games,",
+      taglineBold: "Now Online.",
+      desc: "Create a session, share the link, and play with friends anywhere in the world. No expensive physical sets required.",
+      create: "Create Session",
+      join: "Join Session",
+      placeholder: "Enter room code...",
+      joinBtn: "Join",
+      gamesTitle: "Games in the Vault",
+      comingSoon: "Coming Soon",
+      playNow: "Play Now",
+      players: "players",
+    },
+    th: {
+      tagline: "บอร์ดเกมที่คุณรัก",
+      taglineBold: "เล่นได้ทางออนไลน์",
+      desc: "สร้างห้อง แชร์ลิงก์ และเล่นกับเพื่อนได้ทุกที่ทั่วโลก ไม่จำเป็นต้องซื้อกล่องราคาแพง",
+      create: "สร้างห้อง",
+      join: "เข้าร่วมห้อง",
+      placeholder: "ใส่รหัสห้อง...",
+      joinBtn: "เข้าร่วม",
+      gamesTitle: "เกมใน Vault",
+      comingSoon: "เร็วๆ นี้",
+      playNow: "เล่นเลย",
+      players: "ผู้เล่น",
+    },
+  }[lang];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen relative overflow-hidden" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 60%)" }}>
+      {/* Background village image */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+        style={{ backgroundImage: "url('/images/platform/bg-landing.png')" }}
+      />
+
+      {/* Gradient overlay */}
+      <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent, rgba(13,10,26,0.6) 50%, #0d0a1a)" }} />
+
+      {/* Fog layers */}
+      <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none">
+        <div className="fog-layer-1 absolute bottom-0 left-0 right-0 h-48" style={{ background: "linear-gradient(to top, rgba(74,111,165,0.15) 0%, transparent 100%)", filter: "blur(20px)" }} />
+        <div className="fog-layer-2 absolute bottom-0 left-0 right-0 h-32" style={{ background: "linear-gradient(to top, rgba(45,27,78,0.2) 0%, transparent 100%)", filter: "blur(30px)" }} />
+      </div>
+
+      {/* Firefly particles */}
+      {[...Array(8)].map((_, i) => (
+        <div key={i} className="firefly float-animation absolute w-1 h-1 rounded-full" style={{ left: `${10 + i * 12}%`, top: `${20 + (i % 3) * 20}%`, animationDelay: `${i * 0.7}s`, animationDuration: `${3 + i * 0.5}s`, background: "#d4af37", boxShadow: "0 0 8px #d4af37" }} />
+      ))}
+
+      {/* Nav */}
+      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
+        <div className="flex items-center gap-3">
+          <VaultIcon />
+          <span className="text-xl font-bold tracking-widest text-shimmer" style={{ fontFamily: "var(--font-gothic)" }}>
+            BoardgameVault
+          </span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <button
+          onClick={() => setLang(lang === "en" ? "th" : "en")}
+          className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+        >
+          {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
+        </button>
+      </nav>
+
+      {/* Hero */}
+      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-16 pb-24 max-w-4xl mx-auto">
+        <div className="mb-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-yellow-700/40 bg-yellow-900/20 text-yellow-400 text-xs tracking-widest uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+          {lang === "en" ? "Shadows Over Thornwick — Now Available" : "เงามืดเหนือธอร์นวิค — เปิดให้เล่นแล้ว"}
+        </div>
+
+        <h1 className="text-5xl md:text-7xl font-black mb-4 leading-tight" style={{ fontFamily: "var(--font-gothic)" }}>
+          <span style={{ color: "#e8d5b0" }}>{t.tagline}</span>
+          <br />
+          <span className="text-shimmer">{t.taglineBold}</span>
+        </h1>
+
+        <p className="text-lg max-w-xl mb-12 leading-relaxed" style={{ color: "#a08060" }}>
+          {t.desc}
+        </p>
+
+        {/* CTA */}
+        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+          <Link
+            href="/session/create"
+            className="btn-gothic-primary flex-1 px-6 py-4 rounded-xl text-center font-semibold text-lg no-underline"
+            style={{ fontFamily: "var(--font-gothic)" }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            ⚔ {t.create}
+          </Link>
+
+          <div className="flex flex-1 gap-2">
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              placeholder={t.placeholder}
+              maxLength={6}
+              className="flex-1 rounded-xl px-4 py-4 text-center tracking-[0.3em] font-mono text-lg focus:outline-none transition-colors"
+              style={{ background: "rgba(26,10,46,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <Link
+              href={joinCode.length === 6 ? `/session/${joinCode}` : "#"}
+              className={`btn-gothic-secondary px-5 py-4 rounded-xl font-semibold no-underline flex items-center ${joinCode.length !== 6 ? "opacity-40 pointer-events-none" : ""}`}
+            >
+              {t.joinBtn}
+            </Link>
+          </div>
         </div>
-      </main>
+      </section>
+
+      {/* Games grid */}
+      <section className="relative z-10 max-w-7xl mx-auto px-6 pb-24">
+        <div className="gothic-divider mb-12">
+          <h2 className="text-2xl font-bold tracking-widest uppercase text-center px-4" style={{ fontFamily: "var(--font-gothic)", color: "#d4af37" }}>
+            {t.gamesTitle}
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {GAMES.map((game) => (
+            <GameCard key={game.id} game={game} lang={lang} t={t} />
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="relative z-10 text-center pb-8 text-sm" style={{ color: "#4a3a2a" }}>
+        BoardgameVault — Bringing physical games to the digital realm
+      </footer>
     </div>
+  );
+}
+
+function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th"; t: Record<string, string> }) {
+  const gameName = game.name[lang];
+  return (
+    <div className={`gothic-card rounded-2xl overflow-hidden group ${!game.available ? "opacity-60" : ""}`}>
+      <div className={`relative h-48 bg-gradient-to-br ${game.theme} flex items-center justify-center overflow-hidden`}>
+        {game.image ? (
+          <Image src={game.image} alt={gameName} fill className="object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
+        ) : (
+          <div className="text-6xl opacity-20">🎭</div>
+        )}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)" }} />
+        <div className="absolute bottom-3 left-3">
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${game.badge}`}>
+            {game.available ? t.playNow : t.comingSoon}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <h3 className="text-lg font-bold mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
+          {gameName}
+        </h3>
+        <p className="text-sm mb-4 leading-relaxed" style={{ color: "#7a6a5a" }}>
+          {game.description[lang]}
+        </p>
+        <div className="flex items-center justify-between">
+          <span className="text-xs" style={{ color: "#5a4a3a" }}>
+            {game.players} {t.players}
+          </span>
+          {game.available ? (
+            <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
+              {t.playNow} →
+            </Link>
+          ) : (
+            <span className="text-xs italic" style={{ color: "#4a3a2a" }}>{t.comingSoon}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VaultIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <rect x="2" y="8" width="28" height="22" rx="3" stroke="#d4af37" strokeWidth="1.5" />
+      <rect x="6" y="4" width="20" height="6" rx="2" stroke="#d4af37" strokeWidth="1.5" />
+      <circle cx="16" cy="19" r="5" stroke="#d4af37" strokeWidth="1.5" />
+      <circle cx="16" cy="19" r="2" fill="#d4af37" />
+      <line x1="16" y1="14" x2="16" y2="11" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="21" y1="19" x2="24" y2="19" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   );
 }
