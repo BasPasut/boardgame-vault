@@ -80,7 +80,7 @@ export default function HomePage() {
   }[lang];
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 60%)" }}>
+    <div className="min-h-screen relative overflow-x-hidden" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 60%)" }}>
       {/* Background village image */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
@@ -118,7 +118,7 @@ export default function HomePage() {
       </nav>
 
       {/* Hero */}
-      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-16 pb-24 max-w-4xl mx-auto">
+      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-10 pb-16 max-w-4xl mx-auto">
         <div className="mb-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-yellow-700/40 bg-yellow-900/20 text-yellow-400 text-xs tracking-widest uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
           {lang === "en" ? "Shadows Over Thornwick — Now Available" : "เงามืดเหนือธอร์นวิค — เปิดให้เล่นแล้ว"}
