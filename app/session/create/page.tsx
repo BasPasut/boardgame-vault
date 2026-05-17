@@ -13,6 +13,16 @@ const GAMES = [
   { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
 ];
 
+// Initial game_state shape per game — each game owns its own structure
+const INITIAL_GAME_STATE: Record<string, object> = {
+  "shadows-over-thornwick": {
+    script_id: "the-first-shadows",
+    day_number: 1,
+    night_index: 0,
+    role_assignments: {},
+  },
+};
+
 function CreateSessionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,11 +72,8 @@ function CreateSessionForm() {
     const { error: sessionErr } = await supabase.from("sessions").insert({
       code,
       game_id: selectedGame,
-      script_id: "the-first-shadows",
       phase: "lobby",
-      day_number: 1,
-      night_index: 0,
-      role_assignments: {},
+      game_state: INITIAL_GAME_STATE[selectedGame] ?? {},
     });
 
     if (sessionErr) {
@@ -79,8 +86,7 @@ function CreateSessionForm() {
       id: playerId,
       session_code: code,
       name: name.trim(),
-      is_storyteller: true,
-      is_alive: true,
+      player_state: { is_alive: true, is_storyteller: true },
     });
 
     if (playerErr) {
@@ -98,27 +104,19 @@ function CreateSessionForm() {
       <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url('/images/platform/bg-create-session.png')", backgroundSize: "cover", backgroundPosition: "center" }} />
 
       <div className="relative z-10 max-w-2xl mx-auto px-6 py-10">
-        {/* Nav */}
         <div className="flex items-center justify-between mb-10">
-          <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">
-            {t.back}
-          </Link>
+          <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
           <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">
             {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
           </button>
         </div>
 
-        {/* Header */}
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
-            {t.title}
-          </h1>
+          <h1 className="text-4xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.title}</h1>
           <p style={{ color: "#7a6a5a" }}>{t.subtitle}</p>
         </div>
 
-        {/* Form card */}
         <div className="gothic-card rounded-2xl p-8 space-y-8">
-          {/* Game selection */}
           <div>
             <label className="block text-sm font-medium mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.selectGame}
@@ -142,19 +140,14 @@ function CreateSessionForm() {
                     <div className="text-xs mt-0.5" style={{ color: "#5a4a3a" }}>{game.players} players</div>
                   </div>
                   {!game.available && (
-                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
-                      {t.comingSoon}
-                    </span>
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>{t.comingSoon}</span>
                   )}
-                  {selectedGame === game.id && (
-                    <span className="text-yellow-400">✓</span>
-                  )}
+                  {selectedGame === game.id && <span className="text-yellow-400">✓</span>}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Name input */}
           <div>
             <label className="block text-sm font-medium mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.yourName}
@@ -170,11 +163,8 @@ function CreateSessionForm() {
             />
           </div>
 
-          {error && (
-            <p className="text-sm text-center" style={{ color: "#c08080" }}>{error}</p>
-          )}
+          {error && <p className="text-sm text-center" style={{ color: "#c08080" }}>{error}</p>}
 
-          {/* Create button */}
           <button
             onClick={handleCreate}
             disabled={!name.trim() || loading}

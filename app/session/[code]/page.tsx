@@ -10,28 +10,43 @@ import { supabase } from "@/lib/supabase";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
-interface DbSession {
-  code: string;
-  game_id: string;
+// ---------- DB types ----------
+interface SoTGameState {
   script_id: string;
-  phase: GamePhase;
   day_number: number;
   night_index: number;
   role_assignments: Record<string, string>;
+}
+
+interface SoTPlayerState {
+  is_alive: boolean;
+  is_storyteller: boolean;
+}
+
+interface DbSession {
+  code: string;
+  game_id: string;
+  phase: GamePhase;
+  game_state: SoTGameState;
 }
 
 interface DbPlayer {
   id: string;
   session_code: string;
   name: string;
-  is_storyteller: boolean;
-  is_alive: boolean;
+  player_state: SoTPlayerState;
 }
 
 function toPlayer(p: DbPlayer): Player {
-  return { id: p.id, name: p.name, isAlive: p.is_alive, isStoryteller: p.is_storyteller };
+  return {
+    id: p.id,
+    name: p.name,
+    isAlive: p.player_state.is_alive,
+    isStoryteller: p.player_state.is_storyteller,
+  };
 }
 
+// ---------- Component ----------
 function SessionRoom() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -50,13 +65,14 @@ function SessionRoom() {
   const [notFound, setNotFound] = useState(false);
   const [joining, setJoining] = useState(false);
 
-  // Derived state
+  // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
   const isHost = myPlayer?.isStoryteller ?? isHostParam;
   const phase = dbSession?.phase ?? "lobby";
-  const day = dbSession?.day_number ?? 1;
-  const nightIndex = dbSession?.night_index ?? 0;
-  const roleAssignments = dbSession?.role_assignments ?? {};
+  const gs = dbSession?.game_state;
+  const day = gs?.day_number ?? 1;
+  const nightIndex = gs?.night_index ?? 0;
+  const roleAssignments = gs?.role_assignments ?? {};
   const joined = myPlayer !== null;
 
   const nightWakeOrder = FIRST_SHADOWS_ROLES
@@ -74,7 +90,6 @@ function SessionRoom() {
       yourName: "Your Name",
       namePlaceholder: "Enter your name...",
       join: "Join Room",
-      joining: "Joining...",
       players: "Players",
       startGame: "Start Game",
       needMore: "Need at least 5 players to start",
@@ -83,9 +98,6 @@ function SessionRoom() {
       shareCode: "Room Code",
       roleRevealTitle: "Your Role",
       tapReveal: "Tap the card to reveal your role",
-      keepSecret: "Keep this secret!",
-      ability: "Ability",
-      team: "Team",
       understood: "I Understand My Role",
       beginDay: "Begin Day 1 →",
       day: "Day",
@@ -103,7 +115,7 @@ function SessionRoom() {
       back: "← Home",
       roomNotFound: "Room not found",
       roomNotFoundDesc: "This room code doesn't exist or has expired.",
-      waitingForHost: "Waiting for the Storyteller to begin...",
+      waitingForHost: "Waiting for the Storyteller...",
     },
     th: {
       lobby: "หมู่บ้านรอคอย",
@@ -111,7 +123,6 @@ function SessionRoom() {
       yourName: "ชื่อของคุณ",
       namePlaceholder: "ใส่ชื่อของคุณ...",
       join: "เข้าร่วม",
-      joining: "กำลังเข้าร่วม...",
       players: "ผู้เล่น",
       startGame: "เริ่มเกม",
       needMore: "ต้องการผู้เล่นอย่างน้อย 5 คน",
@@ -120,9 +131,6 @@ function SessionRoom() {
       shareCode: "รหัสห้อง",
       roleRevealTitle: "บทบาทของคุณ",
       tapReveal: "แตะการ์ดเพื่อเปิดเผยบทบาท",
-      keepSecret: "เก็บเป็นความลับ!",
-      ability: "ความสามารถ",
-      team: "ทีม",
       understood: "เข้าใจบทบาทของตัวเองแล้ว",
       beginDay: "เริ่มวันที่ 1 →",
       day: "วันที่",
@@ -140,11 +148,11 @@ function SessionRoom() {
       back: "← หน้าแรก",
       roomNotFound: "ไม่พบห้อง",
       roomNotFoundDesc: "รหัสห้องนี้ไม่มีอยู่หรือหมดอายุแล้ว",
-      waitingForHost: "รอ Storyteller เริ่มเกม...",
+      waitingForHost: "รอ Storyteller...",
     },
   }[lang];
 
-  // Load initial data
+  // ---------- Load initial data ----------
   useEffect(() => {
     const storedId = localStorage.getItem(`bgv_player_${code}`);
     if (storedId) setMyPlayerId(storedId);
@@ -154,87 +162,74 @@ function SessionRoom() {
         supabase.from("sessions").select("*").eq("code", code).single(),
         supabase.from("players").select("*").eq("session_code", code).order("joined_at"),
       ]);
-
-      if (!sessionData) {
-        setNotFound(true);
-        setLoading(false);
-        return;
-      }
-
+      if (!sessionData) { setNotFound(true); setLoading(false); return; }
       setDbSession(sessionData as DbSession);
       setPlayers((playersData ?? []).map(toPlayer));
       setLoading(false);
     }
-
     load();
   }, [code]);
 
-  // Real-time subscriptions
+  // ---------- Real-time ----------
   useEffect(() => {
     const channel = supabase
       .channel(`room:${code}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `code=eq.${code}` }, (payload) => {
         const updated = payload.new as DbSession;
         setDbSession(updated);
-        if (updated.phase === "role-reveal") {
-          setShowRoleCard(false);
-          setRevealedRole(null);
-        }
+        if (updated.phase === "role-reveal") { setShowRoleCard(false); setRevealedRole(null); }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "players", filter: `session_code=eq.${code}` }, (payload) => {
-        const newPlayer = toPlayer(payload.new as DbPlayer);
-        setPlayers((prev) => prev.some((p) => p.id === newPlayer.id) ? prev : [...prev, newPlayer]);
+        const p = toPlayer(payload.new as DbPlayer);
+        setPlayers((prev) => prev.some((x) => x.id === p.id) ? prev : [...prev, p]);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "players", filter: `session_code=eq.${code}` }, (payload) => {
-        setPlayers((prev) => prev.map((p) => p.id === (payload.new as DbPlayer).id ? toPlayer(payload.new as DbPlayer) : p));
+        setPlayers((prev) => prev.map((x) => x.id === (payload.new as DbPlayer).id ? toPlayer(payload.new as DbPlayer) : x));
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [code]);
 
+  // ---------- Actions ----------
   const handleJoin = async () => {
     if (!joinName.trim() || joining) return;
     setJoining(true);
     const id = generatePlayerId();
     const { error } = await supabase.from("players").insert({
-      id,
-      session_code: code,
-      name: joinName.trim(),
-      is_storyteller: false,
-      is_alive: true,
+      id, session_code: code, name: joinName.trim(),
+      player_state: { is_alive: true, is_storyteller: false },
     });
-    if (!error) {
-      localStorage.setItem(`bgv_player_${code}`, id);
-      setMyPlayerId(id);
-    }
+    if (!error) { localStorage.setItem(`bgv_player_${code}`, id); setMyPlayerId(id); }
     setJoining(false);
   };
 
   const handleAddDemoPlayers = async () => {
     const names = ["Aria", "Ben", "Cora", "Dex", "Eve", "Flynn", "Grace"];
-    const nonStorytellers = players.filter((p) => !p.isStoryteller).length;
-    const toAdd = names.slice(nonStorytellers, 7);
+    const existing = players.filter((p) => !p.isStoryteller).length;
+    const toAdd = names.slice(existing, 7);
     if (!toAdd.length) return;
     await supabase.from("players").insert(
-      toAdd.map((name) => ({ id: generatePlayerId(), session_code: code, name, is_storyteller: false, is_alive: true }))
+      toAdd.map((name) => ({
+        id: generatePlayerId(), session_code: code, name,
+        player_state: { is_alive: true, is_storyteller: false },
+      }))
     );
   };
 
   const handleStartGame = async () => {
-    const nonStorytellers = players.filter((p) => !p.isStoryteller);
-    if (nonStorytellers.length < 5) return;
-    const assignments = assignRoles(nonStorytellers.map((p) => p.id), "the-first-shadows");
-    await supabase.from("sessions").update({ role_assignments: assignments, phase: "role-reveal" }).eq("code", code);
+    const nonST = players.filter((p) => !p.isStoryteller);
+    if (nonST.length < 5 || !gs) return;
+    const assignments = assignRoles(nonST.map((p) => p.id), gs.script_id);
+    await supabase.from("sessions").update({
+      phase: "role-reveal",
+      game_state: { ...gs, role_assignments: assignments },
+    }).eq("code", code);
   };
 
   const handleRevealRole = () => {
     if (!myPlayerId) return;
     const roleId = roleAssignments[myPlayerId];
-    if (roleId) {
-      setRevealedRole(getRoleById(roleId) ?? null);
-      setShowRoleCard(true);
-    }
+    if (roleId) { setRevealedRole(getRoleById(roleId) ?? null); setShowRoleCard(true); }
   };
 
   const handleBeginDay = async () => {
@@ -248,24 +243,37 @@ function SessionRoom() {
   };
 
   const togglePlayerDead = async (playerId: string) => {
-    const player = players.find((p) => p.id === playerId);
-    if (!player) return;
-    await supabase.from("players").update({ is_alive: !player.isAlive }).eq("id", playerId);
+    const p = players.find((x) => x.id === playerId);
+    if (!p) return;
+    await supabase.from("players").update({
+      player_state: { is_alive: !p.isAlive, is_storyteller: p.isStoryteller },
+    }).eq("id", playerId);
   };
 
   const endDay = async () => {
-    await supabase.from("sessions").update({ phase: "night", night_index: 0 }).eq("code", code);
+    if (!gs) return;
+    await supabase.from("sessions").update({
+      phase: "night",
+      game_state: { ...gs, night_index: 0 },
+    }).eq("code", code);
   };
 
   const nextNightRole = async () => {
-    await supabase.from("sessions").update({ night_index: nightIndex + 1 }).eq("code", code);
+    if (!gs) return;
+    await supabase.from("sessions").update({
+      game_state: { ...gs, night_index: nightIndex + 1 },
+    }).eq("code", code);
   };
 
   const endNight = async () => {
-    await supabase.from("sessions").update({ phase: "day", day_number: day + 1 }).eq("code", code);
+    if (!gs) return;
+    await supabase.from("sessions").update({
+      phase: "day",
+      game_state: { ...gs, day_number: day + 1 },
+    }).eq("code", code);
   };
 
-  // LOADING
+  // ---------- Loading ----------
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
@@ -277,7 +285,7 @@ function SessionRoom() {
     );
   }
 
-  // NOT FOUND
+  // ---------- Not found ----------
   if (notFound) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
@@ -291,7 +299,7 @@ function SessionRoom() {
     );
   }
 
-  // LOBBY
+  // ---------- LOBBY ----------
   if (phase === "lobby") {
     return (
       <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
@@ -307,7 +315,6 @@ function SessionRoom() {
             <p style={{ color: "#7a6a5a" }}>{t.lobbySubtitle}</p>
           </div>
 
-          {/* Room code */}
           <div className="gothic-card rounded-2xl p-6 mb-6 text-center">
             <div className="text-xs tracking-widest uppercase mb-3" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.shareCode}</div>
             <div className="text-5xl font-black tracking-[0.4em] mb-4 font-mono" style={{ color: "#e8d5b0" }}>{code}</div>
@@ -316,7 +323,6 @@ function SessionRoom() {
             </button>
           </div>
 
-          {/* Join form */}
           {!joined && (
             <div className="gothic-card rounded-2xl p-6 mb-6">
               <label className="block text-sm mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.yourName}</label>
@@ -330,18 +336,13 @@ function SessionRoom() {
                   style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
                   onKeyDown={(e) => e.key === "Enter" && handleJoin()}
                 />
-                <button
-                  onClick={handleJoin}
-                  disabled={joining || !joinName.trim()}
-                  className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold disabled:opacity-40"
-                >
+                <button onClick={handleJoin} disabled={joining || !joinName.trim()} className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold disabled:opacity-40">
                   {joining ? "..." : t.join}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Players list */}
           <div className="gothic-card rounded-2xl p-6 mb-6">
             <div className="text-sm mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.players} ({players.length})
@@ -360,7 +361,6 @@ function SessionRoom() {
             </div>
           </div>
 
-          {/* Host controls */}
           {isHost && (
             <div className="space-y-3">
               <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
@@ -376,7 +376,6 @@ function SessionRoom() {
               </button>
             </div>
           )}
-
           {!isHost && joined && (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
@@ -385,7 +384,7 @@ function SessionRoom() {
     );
   }
 
-  // ROLE REVEAL
+  // ---------- ROLE REVEAL ----------
   if (phase === "role-reveal") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
@@ -395,21 +394,19 @@ function SessionRoom() {
         </div>
 
         <h2 className="text-3xl font-black mb-2 text-center" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.roleRevealTitle}</h2>
-        <p className="mb-8 text-center" style={{ color: "#7a6a5a" }}>{!isHost ? t.tapReveal : (lang === "en" ? "All role assignments below" : "รายการบทบาทด้านล่าง")}</p>
+        <p className="mb-8 text-center" style={{ color: "#7a6a5a" }}>
+          {isHost ? (lang === "en" ? "All role assignments" : "รายการบทบาทของผู้เล่น") : t.tapReveal}
+        </p>
 
-        {/* Role card — shown only to non-storyteller players */}
         {!isHost && (
           <div className="role-card-container w-64 h-96 cursor-pointer mb-8" onClick={handleRevealRole}>
             <div className={`role-card-inner relative w-full h-full ${showRoleCard ? "flipped" : ""}`}>
-              {/* Card back */}
               <div className="role-card-front absolute inset-0 rounded-2xl flex flex-col items-center justify-center" style={{ background: "linear-gradient(135deg, #1a0a2e, #0d0a1a)", border: "2px solid rgba(212,175,55,0.4)" }}>
                 <div className="text-6xl mb-4">🕯️</div>
                 <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>SHADOWS OVER</div>
                 <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>THORNWICK</div>
                 <div className="mt-6 text-xs" style={{ color: "#5a4a3a" }}>Tap to reveal</div>
               </div>
-
-              {/* Card face (role) */}
               <div className="role-card-back absolute inset-0 rounded-2xl overflow-hidden flex flex-col" style={{ background: "linear-gradient(135deg, #2d1b4e, #0d0a1a)", border: `2px solid ${revealedRole?.team === "evil" ? "rgba(139,26,26,0.8)" : "rgba(212,175,55,0.8)"}` }}>
                 <div className="flex-1 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.3)" }}>
                   <div className="text-7xl">
@@ -417,12 +414,8 @@ function SessionRoom() {
                   </div>
                 </div>
                 <div className="p-4 text-center">
-                  <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
-                    {revealedRole?.name[lang]}
-                  </div>
-                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>
-                    {revealedRole?.ability[lang]}
-                  </div>
+                  <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{revealedRole?.name[lang]}</div>
+                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>{revealedRole?.ability[lang]}</div>
                   <div className="text-xs px-3 py-1 rounded-full inline-block font-medium" style={{ background: revealedRole?.team === "evil" ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.4)", color: revealedRole?.team === "evil" ? "#ff8080" : "#80b0ff" }}>
                     {revealedRole?.team === "evil" ? t.evil : t.good}
                   </div>
@@ -433,18 +426,16 @@ function SessionRoom() {
         )}
 
         {showRoleCard && !isHost && (
-          <p className="text-sm italic mb-4" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
+          <p className="text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
         )}
 
-        {/* Storyteller view — full assignment list */}
         {isHost && (
           <div className="w-full max-w-md">
             <div className="space-y-1 max-h-64 overflow-y-auto mb-6">
               {players.filter((p) => !p.isStoryteller).map((p) => {
-                const roleId = roleAssignments[p.id];
-                const role = getRoleById(roleId);
+                const role = getRoleById(roleAssignments[p.id]);
                 return (
-                  <div key={p.id} className="text-sm flex justify-between gap-4 px-4 py-2 rounded-lg" style={{ background: "rgba(45,27,78,0.4)", color: "#7a6a5a" }}>
+                  <div key={p.id} className="text-sm flex justify-between gap-4 px-4 py-2 rounded-lg" style={{ background: "rgba(45,27,78,0.4)" }}>
                     <span style={{ color: "#e8d5b0" }}>{p.name}</span>
                     <span style={{ color: role?.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role?.name[lang]}</span>
                   </div>
@@ -460,7 +451,7 @@ function SessionRoom() {
     );
   }
 
-  // DAY PHASE
+  // ---------- DAY ----------
   if (phase === "day") {
     return (
       <div className="min-h-screen" style={{ background: "linear-gradient(180deg, #1a0f00 0%, #0d0a1a 100%)" }}>
@@ -477,11 +468,9 @@ function SessionRoom() {
 
           <p className="mb-6 italic" style={{ color: "#7a6a5a" }}>{t.discuss}</p>
 
-          {/* Player grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
             {players.filter((p) => !p.isStoryteller).map((p) => {
-              const roleId = roleAssignments[p.id];
-              const role = isHost ? getRoleById(roleId) : null;
+              const role = isHost ? getRoleById(roleAssignments[p.id]) : null;
               const isMe = p.id === myPlayerId;
               return (
                 <div key={p.id} className={`gothic-card rounded-xl p-3 text-center ${!p.isAlive ? "opacity-40" : ""} ${isMe ? "ring-1 ring-yellow-600/50" : ""}`}>
@@ -489,12 +478,8 @@ function SessionRoom() {
                     {!p.isAlive ? "💀" : p.name[0].toUpperCase()}
                   </div>
                   <div className="text-sm font-medium" style={{ color: p.isAlive ? "#e8d5b0" : "#5a4a3a" }}>{p.name}{isMe ? " ★" : ""}</div>
-                  {isHost && role && (
-                    <div className="text-xs mt-1" style={{ color: role.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role.name[lang]}</div>
-                  )}
-                  <div className="text-xs mt-1" style={{ color: p.isAlive ? "#5a9a5a" : "#9a5a5a" }}>
-                    {p.isAlive ? t.alive : t.dead}
-                  </div>
+                  {isHost && role && <div className="text-xs mt-1" style={{ color: role.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role.name[lang]}</div>}
+                  <div className="text-xs mt-1" style={{ color: p.isAlive ? "#5a9a5a" : "#9a5a5a" }}>{p.isAlive ? t.alive : t.dead}</div>
                   {isHost && (
                     <button onClick={() => togglePlayerDead(p.id)} className="text-xs mt-2 px-2 py-1 rounded" style={{ background: "rgba(139,26,26,0.2)", color: "#c08080" }}>
                       {p.isAlive ? t.markDead : t.markAlive}
@@ -505,12 +490,11 @@ function SessionRoom() {
             })}
           </div>
 
-          {isHost && (
+          {isHost ? (
             <button onClick={endDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
               🌙 {t.endDay}
             </button>
-          )}
-          {!isHost && (
+          ) : (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
@@ -518,9 +502,8 @@ function SessionRoom() {
     );
   }
 
-  // NIGHT PHASE
+  // ---------- NIGHT ----------
   if (phase === "night") {
-    const currentWake = nightWakeOrder[nightIndex];
     return (
       <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(180deg, #000510 0%, #0d0a1a 100%)" }}>
         <div className="max-w-2xl mx-auto px-6 py-8 w-full">
@@ -549,18 +532,15 @@ function SessionRoom() {
                   </div>
                 ))}
               </div>
-
-              <div className="flex gap-3">
-                {nightIndex < nightWakeOrder.length - 1 ? (
-                  <button onClick={nextNightRole} className="btn-gothic-primary flex-1 py-3 rounded-xl font-semibold">
-                    Next → {nightWakeOrder[nightIndex + 1]?.name[lang]}
-                  </button>
-                ) : (
-                  <button onClick={endNight} className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
-                    ☀️ {t.endNight}
-                  </button>
-                )}
-              </div>
+              {nightIndex < nightWakeOrder.length - 1 ? (
+                <button onClick={nextNightRole} className="btn-gothic-primary w-full py-3 rounded-xl font-semibold">
+                  Next → {nightWakeOrder[nightIndex + 1]?.name[lang]}
+                </button>
+              ) : (
+                <button onClick={endNight} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+                  ☀️ {t.endNight}
+                </button>
+              )}
             </>
           ) : (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
