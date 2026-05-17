@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { generateSessionCode, generatePlayerId } from "@/lib/utils/session";
+import { supabase } from "@/lib/supabase";
 import { Suspense } from "react";
 
 const GAMES = [
@@ -21,6 +22,7 @@ function CreateSessionForm() {
   const [name, setName] = useState("");
   const [selectedGame, setSelectedGame] = useState(defaultGame);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const t = {
     en: {
@@ -33,6 +35,7 @@ function CreateSessionForm() {
       create: "Create Room",
       creating: "Creating...",
       comingSoon: "Coming Soon",
+      errorMsg: "Failed to create room. Please try again.",
     },
     th: {
       back: "← กลับ",
@@ -44,24 +47,50 @@ function CreateSessionForm() {
       create: "สร้างห้อง",
       creating: "กำลังสร้าง...",
       comingSoon: "เร็วๆ นี้",
+      errorMsg: "สร้างห้องไม่สำเร็จ กรุณาลองใหม่",
     },
   }[lang];
 
   const handleCreate = async () => {
     if (!name.trim() || !selectedGame) return;
     setLoading(true);
+    setError("");
 
     const code = generateSessionCode();
     const playerId = generatePlayerId();
 
-    // Store host info in localStorage for this session
-    localStorage.setItem(`bgv_player_${code}`, JSON.stringify({
-      id: playerId,
-      name: name.trim(),
-      isStoryteller: true,
-    }));
+    const { error: sessionErr } = await supabase.from("sessions").insert({
+      code,
+      game_id: selectedGame,
+      script_id: "the-first-shadows",
+      phase: "lobby",
+      day_number: 1,
+      night_index: 0,
+      role_assignments: {},
+    });
 
-    router.push(`/session/${code}?game=${selectedGame}&host=true`);
+    if (sessionErr) {
+      setError(t.errorMsg);
+      setLoading(false);
+      return;
+    }
+
+    const { error: playerErr } = await supabase.from("players").insert({
+      id: playerId,
+      session_code: code,
+      name: name.trim(),
+      is_storyteller: true,
+      is_alive: true,
+    });
+
+    if (playerErr) {
+      setError(t.errorMsg);
+      setLoading(false);
+      return;
+    }
+
+    localStorage.setItem(`bgv_player_${code}`, playerId);
+    router.push(`/session/${code}?host=true`);
   };
 
   return (
@@ -140,6 +169,10 @@ function CreateSessionForm() {
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
           </div>
+
+          {error && (
+            <p className="text-sm text-center" style={{ color: "#c08080" }}>{error}</p>
+          )}
 
           {/* Create button */}
           <button

@@ -5,29 +5,67 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { generatePlayerId } from "@/lib/utils/session";
 import { FIRST_SHADOWS_ROLES, getRoleById } from "@/lib/games/shadows-over-thornwick/roles";
-import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
+import { assignRoles } from "@/lib/games/shadows-over-thornwick/scripts";
+import { supabase } from "@/lib/supabase";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
-// Demo: local state only (no backend yet — single device storyteller mode)
+interface DbSession {
+  code: string;
+  game_id: string;
+  script_id: string;
+  phase: GamePhase;
+  day_number: number;
+  night_index: number;
+  role_assignments: Record<string, string>;
+}
+
+interface DbPlayer {
+  id: string;
+  session_code: string;
+  name: string;
+  is_storyteller: boolean;
+  is_alive: boolean;
+}
+
+function toPlayer(p: DbPlayer): Player {
+  return { id: p.id, name: p.name, isAlive: p.is_alive, isStoryteller: p.is_storyteller };
+}
+
 function SessionRoom() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const code = params.code as string;
-  const isHost = searchParams.get("host") === "true";
+  const code = (params.code as string).toUpperCase();
+  const isHostParam = searchParams.get("host") === "true";
 
   const [lang, setLang] = useState<"en" | "th">("en");
-  const [phase, setPhase] = useState<GamePhase>("lobby");
+  const [dbSession, setDbSession] = useState<DbSession | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [myName, setMyName] = useState("");
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [joinName, setJoinName] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
   const [revealedRole, setRevealedRole] = useState<Role | null>(null);
   const [showRoleCard, setShowRoleCard] = useState(false);
-  const [day, setDay] = useState(1);
   const [copied, setCopied] = useState(false);
-  const [nightIndex, setNightIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  // Derived state
+  const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
+  const isHost = myPlayer?.isStoryteller ?? isHostParam;
+  const phase = dbSession?.phase ?? "lobby";
+  const day = dbSession?.day_number ?? 1;
+  const nightIndex = dbSession?.night_index ?? 0;
+  const roleAssignments = dbSession?.role_assignments ?? {};
+  const joined = myPlayer !== null;
+
+  const nightWakeOrder = FIRST_SHADOWS_ROLES
+    .filter((r) => r.firstNight !== undefined || r.otherNights !== undefined)
+    .sort((a, b) => {
+      const aN = day === 1 ? (a.firstNight ?? 99) : (a.otherNights ?? 99);
+      const bN = day === 1 ? (b.firstNight ?? 99) : (b.otherNights ?? 99);
+      return aN - bN;
+    });
 
   const t = {
     en: {
@@ -36,6 +74,7 @@ function SessionRoom() {
       yourName: "Your Name",
       namePlaceholder: "Enter your name...",
       join: "Join Room",
+      joining: "Joining...",
       players: "Players",
       startGame: "Start Game",
       needMore: "Need at least 5 players to start",
@@ -48,6 +87,7 @@ function SessionRoom() {
       ability: "Ability",
       team: "Team",
       understood: "I Understand My Role",
+      beginDay: "Begin Day 1 →",
       day: "Day",
       night: "Night",
       discuss: "Discuss who might be the Demon...",
@@ -55,12 +95,15 @@ function SessionRoom() {
       endNight: "End Night → Dawn Breaks",
       wakeOrder: "Wake Order Tonight",
       markDead: "Mark Dead",
+      markAlive: "Mark Alive",
       alive: "Alive",
       dead: "Dead",
       good: "Good",
       evil: "Evil",
-      storytellerView: "Storyteller View",
       back: "← Home",
+      roomNotFound: "Room not found",
+      roomNotFoundDesc: "This room code doesn't exist or has expired.",
+      waitingForHost: "Waiting for the Storyteller to begin...",
     },
     th: {
       lobby: "หมู่บ้านรอคอย",
@@ -68,6 +111,7 @@ function SessionRoom() {
       yourName: "ชื่อของคุณ",
       namePlaceholder: "ใส่ชื่อของคุณ...",
       join: "เข้าร่วม",
+      joining: "กำลังเข้าร่วม...",
       players: "ผู้เล่น",
       startGame: "เริ่มเกม",
       needMore: "ต้องการผู้เล่นอย่างน้อย 5 คน",
@@ -80,6 +124,7 @@ function SessionRoom() {
       ability: "ความสามารถ",
       team: "ทีม",
       understood: "เข้าใจบทบาทของตัวเองแล้ว",
+      beginDay: "เริ่มวันที่ 1 →",
       day: "วันที่",
       night: "คืนที่",
       discuss: "ถกเถียงกันว่าใครคือปีศาจ...",
@@ -87,62 +132,113 @@ function SessionRoom() {
       endNight: "สิ้นสุดคืน → รุ่งเช้ามาถึง",
       wakeOrder: "ลำดับการปลุกคืนนี้",
       markDead: "ทำเครื่องหมายว่าตาย",
+      markAlive: "ทำเครื่องหมายว่ามีชีวิต",
       alive: "มีชีวิต",
       dead: "ตาย",
       good: "ฝ่ายดี",
       evil: "ฝ่ายชั่ว",
-      storytellerView: "มุมมอง Storyteller",
       back: "← หน้าแรก",
+      roomNotFound: "ไม่พบห้อง",
+      roomNotFoundDesc: "รหัสห้องนี้ไม่มีอยู่หรือหมดอายุแล้ว",
+      waitingForHost: "รอ Storyteller เริ่มเกม...",
     },
   }[lang];
 
+  // Load initial data
   useEffect(() => {
-    const stored = localStorage.getItem(`bgv_player_${code}`);
-    if (stored) {
-      const data = JSON.parse(stored);
-      setMyName(data.name);
-      setJoined(true);
-      setPlayers([{ id: data.id, name: data.name, isAlive: true, isStoryteller: isHost }]);
+    const storedId = localStorage.getItem(`bgv_player_${code}`);
+    if (storedId) setMyPlayerId(storedId);
+
+    async function load() {
+      const [{ data: sessionData }, { data: playersData }] = await Promise.all([
+        supabase.from("sessions").select("*").eq("code", code).single(),
+        supabase.from("players").select("*").eq("session_code", code).order("joined_at"),
+      ]);
+
+      if (!sessionData) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      setDbSession(sessionData as DbSession);
+      setPlayers((playersData ?? []).map(toPlayer));
+      setLoading(false);
     }
-  }, [code, isHost]);
 
-  const handleJoin = () => {
-    if (!joinName.trim()) return;
+    load();
+  }, [code]);
+
+  // Real-time subscriptions
+  useEffect(() => {
+    const channel = supabase
+      .channel(`room:${code}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `code=eq.${code}` }, (payload) => {
+        const updated = payload.new as DbSession;
+        setDbSession(updated);
+        if (updated.phase === "role-reveal") {
+          setShowRoleCard(false);
+          setRevealedRole(null);
+        }
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "players", filter: `session_code=eq.${code}` }, (payload) => {
+        const newPlayer = toPlayer(payload.new as DbPlayer);
+        setPlayers((prev) => prev.some((p) => p.id === newPlayer.id) ? prev : [...prev, newPlayer]);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "players", filter: `session_code=eq.${code}` }, (payload) => {
+        setPlayers((prev) => prev.map((p) => p.id === (payload.new as DbPlayer).id ? toPlayer(payload.new as DbPlayer) : p));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [code]);
+
+  const handleJoin = async () => {
+    if (!joinName.trim() || joining) return;
+    setJoining(true);
     const id = generatePlayerId();
-    const player: Player = { id, name: joinName.trim(), isAlive: true, isStoryteller: false };
-    localStorage.setItem(`bgv_player_${code}`, JSON.stringify({ id, name: joinName.trim(), isStoryteller: false }));
-    setMyName(joinName.trim());
-    setPlayers((prev) => [...prev, player]);
-    setJoined(true);
+    const { error } = await supabase.from("players").insert({
+      id,
+      session_code: code,
+      name: joinName.trim(),
+      is_storyteller: false,
+      is_alive: true,
+    });
+    if (!error) {
+      localStorage.setItem(`bgv_player_${code}`, id);
+      setMyPlayerId(id);
+    }
+    setJoining(false);
   };
 
-  const handleAddDemoPlayers = () => {
+  const handleAddDemoPlayers = async () => {
     const names = ["Aria", "Ben", "Cora", "Dex", "Eve", "Flynn", "Grace"];
-    const existing = players.length;
-    const toAdd = names.slice(0, Math.max(0, 7 - existing));
-    setPlayers((prev) => [
-      ...prev,
-      ...toAdd.map((name) => ({ id: generatePlayerId(), name, isAlive: true, isStoryteller: false })),
-    ]);
+    const nonStorytellers = players.filter((p) => !p.isStoryteller).length;
+    const toAdd = names.slice(nonStorytellers, 7);
+    if (!toAdd.length) return;
+    await supabase.from("players").insert(
+      toAdd.map((name) => ({ id: generatePlayerId(), session_code: code, name, is_storyteller: false, is_alive: true }))
+    );
   };
 
-  const handleStartGame = () => {
+  const handleStartGame = async () => {
     const nonStorytellers = players.filter((p) => !p.isStoryteller);
     if (nonStorytellers.length < 5) return;
     const assignments = assignRoles(nonStorytellers.map((p) => p.id), "the-first-shadows");
-    setRoleAssignments(assignments);
-    setPhase("role-reveal");
+    await supabase.from("sessions").update({ role_assignments: assignments, phase: "role-reveal" }).eq("code", code);
   };
 
   const handleRevealRole = () => {
-    const stored = localStorage.getItem(`bgv_player_${code}`);
-    if (!stored) return;
-    const { id } = JSON.parse(stored);
-    const roleId = roleAssignments[id];
+    if (!myPlayerId) return;
+    const roleId = roleAssignments[myPlayerId];
     if (roleId) {
       setRevealedRole(getRoleById(roleId) ?? null);
       setShowRoleCard(true);
     }
+  };
+
+  const handleBeginDay = async () => {
+    await supabase.from("sessions").update({ phase: "day" }).eq("code", code);
   };
 
   const copyCode = () => {
@@ -151,17 +247,49 @@ function SessionRoom() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const togglePlayerDead = (playerId: string) => {
-    setPlayers((prev) => prev.map((p) => p.id === playerId ? { ...p, isAlive: !p.isAlive } : p));
+  const togglePlayerDead = async (playerId: string) => {
+    const player = players.find((p) => p.id === playerId);
+    if (!player) return;
+    await supabase.from("players").update({ is_alive: !player.isAlive }).eq("id", playerId);
   };
 
-  const nightWakeOrder = FIRST_SHADOWS_ROLES
-    .filter((r) => r.firstNight !== undefined || r.otherNights !== undefined)
-    .sort((a, b) => {
-      const aN = day === 1 ? (a.firstNight ?? 99) : (a.otherNights ?? 99);
-      const bN = day === 1 ? (b.firstNight ?? 99) : (b.otherNights ?? 99);
-      return aN - bN;
-    });
+  const endDay = async () => {
+    await supabase.from("sessions").update({ phase: "night", night_index: 0 }).eq("code", code);
+  };
+
+  const nextNightRole = async () => {
+    await supabase.from("sessions").update({ night_index: nightIndex + 1 }).eq("code", code);
+  };
+
+  const endNight = async () => {
+    await supabase.from("sessions").update({ phase: "day", day_number: day + 1 }).eq("code", code);
+  };
+
+  // LOADING
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-pulse">🕯️</div>
+          <p style={{ color: "#7a6a5a" }}>Entering Thornwick...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // NOT FOUND
+  if (notFound) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
+        <div className="text-center gothic-card rounded-2xl p-10 max-w-sm">
+          <div className="text-5xl mb-4">🗝️</div>
+          <h2 className="text-2xl font-black mb-3" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.roomNotFound}</h2>
+          <p className="mb-6" style={{ color: "#7a6a5a" }}>{t.roomNotFoundDesc}</p>
+          <Link href="/" className="btn-gothic-primary px-6 py-3 rounded-xl font-semibold no-underline">{t.back}</Link>
+        </div>
+      </div>
+    );
+  }
 
   // LOBBY
   if (phase === "lobby") {
@@ -188,7 +316,7 @@ function SessionRoom() {
             </button>
           </div>
 
-          {/* Join form (if not yet joined) */}
+          {/* Join form */}
           {!joined && (
             <div className="gothic-card rounded-2xl p-6 mb-6">
               <label className="block text-sm mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.yourName}</label>
@@ -197,11 +325,18 @@ function SessionRoom() {
                   value={joinName}
                   onChange={(e) => setJoinName(e.target.value)}
                   placeholder={t.namePlaceholder}
+                  maxLength={20}
                   className="flex-1 px-4 py-3 rounded-xl focus:outline-none"
                   style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
                   onKeyDown={(e) => e.key === "Enter" && handleJoin()}
                 />
-                <button onClick={handleJoin} className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold">{t.join}</button>
+                <button
+                  onClick={handleJoin}
+                  disabled={joining || !joinName.trim()}
+                  className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold disabled:opacity-40"
+                >
+                  {joining ? "..." : t.join}
+                </button>
               </div>
             </div>
           )}
@@ -219,6 +354,7 @@ function SessionRoom() {
                   </div>
                   <span style={{ color: "#e8d5b0" }}>{p.name}</span>
                   {p.isStoryteller && <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: "rgba(212,175,55,0.15)", color: "#d4af37" }}>Storyteller</span>}
+                  {p.id === myPlayerId && !p.isStoryteller && <span className="text-xs ml-auto" style={{ color: "#5a4a3a" }}>you</span>}
                 </div>
               ))}
             </div>
@@ -240,6 +376,10 @@ function SessionRoom() {
               </button>
             </div>
           )}
+
+          {!isHost && joined && (
+            <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
+          )}
         </div>
       </div>
     );
@@ -255,64 +395,64 @@ function SessionRoom() {
         </div>
 
         <h2 className="text-3xl font-black mb-2 text-center" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.roleRevealTitle}</h2>
-        <p className="mb-8 text-center" style={{ color: "#7a6a5a" }}>{t.tapReveal}</p>
+        <p className="mb-8 text-center" style={{ color: "#7a6a5a" }}>{!isHost ? t.tapReveal : (lang === "en" ? "All role assignments below" : "รายการบทบาทด้านล่าง")}</p>
 
-        {/* Role card */}
-        <div className="role-card-container w-64 h-96 cursor-pointer mb-8" onClick={handleRevealRole}>
-          <div className={`role-card-inner relative w-full h-full ${showRoleCard ? "flipped" : ""}`}>
-            {/* Card back */}
-            <div className="role-card-front absolute inset-0 rounded-2xl flex flex-col items-center justify-center" style={{ background: "linear-gradient(135deg, #1a0a2e, #0d0a1a)", border: "2px solid rgba(212,175,55,0.4)" }}>
-              <div className="text-6xl mb-4">🕯️</div>
-              <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>BLOOD ON THE</div>
-              <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>CLOCKTOWER</div>
-              <div className="mt-6 text-xs" style={{ color: "#5a4a3a" }}>Tap to reveal</div>
-            </div>
-
-            {/* Card front (role) */}
-            <div className="role-card-back absolute inset-0 rounded-2xl overflow-hidden flex flex-col" style={{ background: "linear-gradient(135deg, #2d1b4e, #0d0a1a)", border: `2px solid ${revealedRole?.team === "evil" ? "rgba(139,26,26,0.8)" : "rgba(212,175,55,0.8)"}` }}>
-              <div className="flex-1 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.3)" }}>
-                <div className="text-7xl">
-                  {revealedRole?.type === "demon" ? "😈" : revealedRole?.type === "minion" ? "👁️" : revealedRole?.type === "outsider" ? "🃏" : "👤"}
-                </div>
+        {/* Role card — shown only to non-storyteller players */}
+        {!isHost && (
+          <div className="role-card-container w-64 h-96 cursor-pointer mb-8" onClick={handleRevealRole}>
+            <div className={`role-card-inner relative w-full h-full ${showRoleCard ? "flipped" : ""}`}>
+              {/* Card back */}
+              <div className="role-card-front absolute inset-0 rounded-2xl flex flex-col items-center justify-center" style={{ background: "linear-gradient(135deg, #1a0a2e, #0d0a1a)", border: "2px solid rgba(212,175,55,0.4)" }}>
+                <div className="text-6xl mb-4">🕯️</div>
+                <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>SHADOWS OVER</div>
+                <div className="text-sm tracking-widest" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>THORNWICK</div>
+                <div className="mt-6 text-xs" style={{ color: "#5a4a3a" }}>Tap to reveal</div>
               </div>
-              <div className="p-4 text-center">
-                <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
-                  {revealedRole?.name[lang]}
+
+              {/* Card face (role) */}
+              <div className="role-card-back absolute inset-0 rounded-2xl overflow-hidden flex flex-col" style={{ background: "linear-gradient(135deg, #2d1b4e, #0d0a1a)", border: `2px solid ${revealedRole?.team === "evil" ? "rgba(139,26,26,0.8)" : "rgba(212,175,55,0.8)"}` }}>
+                <div className="flex-1 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.3)" }}>
+                  <div className="text-7xl">
+                    {revealedRole?.type === "demon" ? "😈" : revealedRole?.type === "minion" ? "👁️" : revealedRole?.type === "outsider" ? "🃏" : "👤"}
+                  </div>
                 </div>
-                <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>
-                  {revealedRole?.ability[lang]}
-                </div>
-                <div className={`text-xs px-3 py-1 rounded-full inline-block font-medium`} style={{ background: revealedRole?.team === "evil" ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.4)", color: revealedRole?.team === "evil" ? "#ff8080" : "#80b0ff" }}>
-                  {revealedRole?.team === "evil" ? t.evil : t.good}
+                <div className="p-4 text-center">
+                  <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
+                    {revealedRole?.name[lang]}
+                  </div>
+                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>
+                    {revealedRole?.ability[lang]}
+                  </div>
+                  <div className="text-xs px-3 py-1 rounded-full inline-block font-medium" style={{ background: revealedRole?.team === "evil" ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.4)", color: revealedRole?.team === "evil" ? "#ff8080" : "#80b0ff" }}>
+                    {revealedRole?.team === "evil" ? t.evil : t.good}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-
-        {showRoleCard && (
-          <button onClick={() => setPhase("day")} className="btn-gothic-primary px-8 py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
-            {t.understood}
-          </button>
         )}
 
+        {showRoleCard && !isHost && (
+          <p className="text-sm italic mb-4" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
+        )}
+
+        {/* Storyteller view — full assignment list */}
         {isHost && (
-          <div className="mt-6 text-center">
-            <p className="text-xs mb-3" style={{ color: "#5a4a3a" }}>Storyteller: All role assignments</p>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
+          <div className="w-full max-w-md">
+            <div className="space-y-1 max-h-64 overflow-y-auto mb-6">
               {players.filter((p) => !p.isStoryteller).map((p) => {
                 const roleId = roleAssignments[p.id];
                 const role = getRoleById(roleId);
                 return (
-                  <div key={p.id} className="text-xs flex justify-between gap-4 px-3 py-1 rounded" style={{ background: "rgba(45,27,78,0.3)", color: "#7a6a5a" }}>
-                    <span>{p.name}</span>
+                  <div key={p.id} className="text-sm flex justify-between gap-4 px-4 py-2 rounded-lg" style={{ background: "rgba(45,27,78,0.4)", color: "#7a6a5a" }}>
+                    <span style={{ color: "#e8d5b0" }}>{p.name}</span>
                     <span style={{ color: role?.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role?.name[lang]}</span>
                   </div>
                 );
               })}
             </div>
-            <button onClick={() => setPhase("day")} className="btn-gothic-secondary px-6 py-2 rounded-lg text-sm mt-4">
-              Begin Day 1 →
+            <button onClick={handleBeginDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+              ☀️ {t.beginDay}
             </button>
           </div>
         )}
@@ -327,7 +467,9 @@ function SessionRoom() {
         <div className="max-w-2xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <div className="text-xs tracking-widest mb-1" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>BLOOD ON THE CLOCKTOWER</div>
+              <div className="text-xs tracking-widest mb-1" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                {lang === "en" ? "SHADOWS OVER THORNWICK" : "เงามืดเหนือธอร์นวิค"}
+              </div>
               <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
             </div>
             <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
@@ -340,12 +482,13 @@ function SessionRoom() {
             {players.filter((p) => !p.isStoryteller).map((p) => {
               const roleId = roleAssignments[p.id];
               const role = isHost ? getRoleById(roleId) : null;
+              const isMe = p.id === myPlayerId;
               return (
-                <div key={p.id} className={`gothic-card rounded-xl p-3 text-center ${!p.isAlive ? "opacity-40" : ""}`}>
+                <div key={p.id} className={`gothic-card rounded-xl p-3 text-center ${!p.isAlive ? "opacity-40" : ""} ${isMe ? "ring-1 ring-yellow-600/50" : ""}`}>
                   <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-2" style={{ background: !p.isAlive ? "rgba(90,74,58,0.3)" : role?.team === "evil" ? "rgba(139,26,26,0.3)" : "rgba(74,111,165,0.3)", color: "#e8d5b0" }}>
                     {!p.isAlive ? "💀" : p.name[0].toUpperCase()}
                   </div>
-                  <div className="text-sm font-medium" style={{ color: p.isAlive ? "#e8d5b0" : "#5a4a3a" }}>{p.name}</div>
+                  <div className="text-sm font-medium" style={{ color: p.isAlive ? "#e8d5b0" : "#5a4a3a" }}>{p.name}{isMe ? " ★" : ""}</div>
                   {isHost && role && (
                     <div className="text-xs mt-1" style={{ color: role.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role.name[lang]}</div>
                   )}
@@ -354,7 +497,7 @@ function SessionRoom() {
                   </div>
                   {isHost && (
                     <button onClick={() => togglePlayerDead(p.id)} className="text-xs mt-2 px-2 py-1 rounded" style={{ background: "rgba(139,26,26,0.2)", color: "#c08080" }}>
-                      {t.markDead}
+                      {p.isAlive ? t.markDead : t.markAlive}
                     </button>
                   )}
                 </div>
@@ -363,9 +506,12 @@ function SessionRoom() {
           </div>
 
           {isHost && (
-            <button onClick={() => { setPhase("night"); setNightIndex(0); }} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+            <button onClick={endDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
               🌙 {t.endDay}
             </button>
+          )}
+          {!isHost && (
+            <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
       </div>
@@ -385,10 +531,12 @@ function SessionRoom() {
 
           <div className="text-center py-8 mb-6 gothic-card rounded-2xl">
             <div className="text-5xl mb-3">🌕</div>
-            <p className="text-lg italic" style={{ color: "#7a6a5a" }}>The village sleeps...</p>
+            <p className="text-lg italic" style={{ color: "#7a6a5a" }}>
+              {lang === "en" ? "The village sleeps..." : "หมู่บ้านหลับใหล..."}
+            </p>
           </div>
 
-          {isHost && (
+          {isHost ? (
             <>
               <div className="text-sm mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.wakeOrder}</div>
               <div className="space-y-2 mb-6">
@@ -404,16 +552,18 @@ function SessionRoom() {
 
               <div className="flex gap-3">
                 {nightIndex < nightWakeOrder.length - 1 ? (
-                  <button onClick={() => setNightIndex((i) => i + 1)} className="btn-gothic-primary flex-1 py-3 rounded-xl font-semibold">
+                  <button onClick={nextNightRole} className="btn-gothic-primary flex-1 py-3 rounded-xl font-semibold">
                     Next → {nightWakeOrder[nightIndex + 1]?.name[lang]}
                   </button>
                 ) : (
-                  <button onClick={() => { setDay((d) => d + 1); setPhase("day"); }} className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+                  <button onClick={endNight} className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
                     ☀️ {t.endNight}
                   </button>
                 )}
               </div>
             </>
+          ) : (
+            <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
       </div>
