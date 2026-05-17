@@ -57,7 +57,7 @@ export default function HomePage() {
       desc: "Create a session, share the link, and play with friends anywhere in the world. No expensive physical sets required.",
       create: "Create Session",
       join: "Join Session",
-      placeholder: "Enter room code...",
+      placeholder: "Room code",
       joinBtn: "Join",
       gamesTitle: "Games in the Vault",
       comingSoon: "Coming Soon",
@@ -70,7 +70,7 @@ export default function HomePage() {
       desc: "สร้างห้อง แชร์ลิงก์ และเล่นกับเพื่อนได้ทุกที่ทั่วโลก ไม่จำเป็นต้องซื้อกล่องราคาแพง",
       create: "สร้างห้อง",
       join: "เข้าร่วมห้อง",
-      placeholder: "ใส่รหัสห้อง...",
+      placeholder: "รหัสห้อง",
       joinBtn: "เข้าร่วม",
       gamesTitle: "เกมใน Vault",
       comingSoon: "เร็วๆ นี้",
@@ -135,27 +135,27 @@ export default function HomePage() {
         </p>
 
         {/* CTA */}
-        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+        <div className="flex flex-col gap-3 w-full max-w-sm">
           <Link
             href="/session/create"
-            className="btn-gothic-primary flex-1 px-6 py-4 rounded-xl text-center font-semibold text-lg no-underline"
+            className="btn-gothic-primary w-full px-6 py-4 rounded-xl text-center font-semibold text-lg no-underline whitespace-nowrap"
             style={{ fontFamily: "var(--font-gothic)" }}
           >
             ⚔ {t.create}
           </Link>
 
-          <div className="flex flex-1 gap-2">
+          <div className="flex gap-2">
             <input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               placeholder={t.placeholder}
               maxLength={6}
-              className="flex-1 rounded-xl px-4 py-4 text-center tracking-[0.3em] font-mono text-lg focus:outline-none transition-colors"
-              style={{ background: "rgba(26,10,46,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
+              className="flex-1 min-w-0 rounded-xl px-4 py-4 text-center font-mono text-lg focus:outline-none transition-colors placeholder:tracking-normal placeholder:text-sm"
+              style={{ background: "rgba(26,10,46,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0", letterSpacing: joinCode ? "0.3em" : "normal" }}
             />
             <Link
               href={joinCode.length === 6 ? `/session/${joinCode}` : "#"}
-              className={`btn-gothic-secondary px-5 py-4 rounded-xl font-semibold no-underline flex items-center ${joinCode.length !== 6 ? "opacity-40 pointer-events-none" : ""}`}
+              className={`btn-gothic-secondary px-5 py-4 rounded-xl font-semibold no-underline flex items-center whitespace-nowrap ${joinCode.length !== 6 ? "opacity-40 pointer-events-none" : ""}`}
             >
               {t.joinBtn}
             </Link>
