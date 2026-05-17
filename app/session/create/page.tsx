@@ -77,7 +77,7 @@ function CreateSessionForm() {
     });
 
     if (sessionErr) {
-      setError(t.errorMsg);
+      setError(`${t.errorMsg} (${sessionErr.message})`);
       setLoading(false);
       return;
     }
