@@ -16,6 +16,7 @@ interface SoTGameState {
   day_number: number;
   night_index: number;
   role_assignments: Record<string, string>;
+  winner?: "good" | "evil";
 }
 
 interface SoTPlayerState {
@@ -116,6 +117,15 @@ function SessionRoom() {
       roomNotFound: "Room not found",
       roomNotFoundDesc: "This room code doesn't exist or has expired.",
       waitingForHost: "Waiting for the Storyteller...",
+      declareWinner: "Declare Winner",
+      goodWins: "Good Wins",
+      evilWins: "Evil Wins",
+      victoryGood: "The Village Survives!",
+      victoryEvil: "Darkness Consumes Thornwick",
+      victoryGoodSub: "The forces of good have triumphed. Thornwick is safe... for now.",
+      victoryEvilSub: "The Demon feasts. Shadows swallow the village whole.",
+      rolesRevealed: "Roles Revealed",
+      playAgain: "Play Again",
     },
     th: {
       lobby: "หมู่บ้านรอคอย",
@@ -149,6 +159,15 @@ function SessionRoom() {
       roomNotFound: "ไม่พบห้อง",
       roomNotFoundDesc: "รหัสห้องนี้ไม่มีอยู่หรือหมดอายุแล้ว",
       waitingForHost: "รอ Storyteller...",
+      declareWinner: "ประกาศผู้ชนะ",
+      goodWins: "ฝ่ายดีชนะ",
+      evilWins: "ฝ่ายชั่วชนะ",
+      victoryGood: "หมู่บ้านรอดพ้น!",
+      victoryEvil: "ความมืดครอบงำธอร์นวิค",
+      victoryGoodSub: "พลังแห่งความดีได้ชัยชนะ ธอร์นวิคปลอดภัย... ในตอนนี้",
+      victoryEvilSub: "ปีศาจได้รับชัยชนะ เงามืดกลืนกินหมู่บ้านทั้งหมด",
+      rolesRevealed: "เปิดเผยบทบาท",
+      playAgain: "เล่นอีกครั้ง",
     },
   }[lang];
 
@@ -270,6 +289,14 @@ function SessionRoom() {
     await supabase.from("sessions").update({
       phase: "day",
       game_state: { ...gs, day_number: day + 1 },
+    }).eq("code", code);
+  };
+
+  const declareWinner = async (winner: "good" | "evil") => {
+    if (!gs) return;
+    await supabase.from("sessions").update({
+      phase: "ended",
+      game_state: { ...gs, winner },
     }).eq("code", code);
   };
 
@@ -491,9 +518,22 @@ function SessionRoom() {
           </div>
 
           {isHost ? (
-            <button onClick={endDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
-              🌙 {t.endDay}
-            </button>
+            <div className="space-y-3">
+              <button onClick={endDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+                🌙 {t.endDay}
+              </button>
+              <div className="gothic-card rounded-xl p-4">
+                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
+                <div className="flex gap-2">
+                  <button onClick={() => declareWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
+                    ☀️ {t.goodWins}
+                  </button>
+                  <button onClick={() => declareWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
+                    😈 {t.evilWins}
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
@@ -541,10 +581,114 @@ function SessionRoom() {
                   ☀️ {t.endNight}
                 </button>
               )}
+              <div className="gothic-card rounded-xl p-4 mt-3">
+                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
+                <div className="flex gap-2">
+                  <button onClick={() => declareWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
+                    ☀️ {t.goodWins}
+                  </button>
+                  <button onClick={() => declareWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
+                    😈 {t.evilWins}
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- ENDED ----------
+  if (phase === "ended") {
+    const winner = gs?.winner;
+    const isGood = winner === "good";
+    const nonStorytellers = players.filter((p) => !p.isStoryteller);
+
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden"
+        style={{ background: isGood
+          ? "radial-gradient(ellipse at top, #0a1a2e 0%, #0d0a1a 70%)"
+          : "radial-gradient(ellipse at top, #2e0a0a 0%, #0d0a1a 70%)" }}
+      >
+        {/* Ambient glow */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: isGood
+          ? "radial-gradient(ellipse at 50% 30%, rgba(74,111,165,0.15) 0%, transparent 60%)"
+          : "radial-gradient(ellipse at 50% 30%, rgba(139,26,26,0.2) 0%, transparent 60%)" }}
+        />
+
+        <div className="relative z-10 w-full max-w-lg">
+          {/* Lang toggle */}
+          <div className="flex justify-end mb-6">
+            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">
+              {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
+            </button>
+          </div>
+
+          {/* Victory banner */}
+          <div className="text-center mb-10">
+            <div className="text-7xl mb-4">{isGood ? "☀️" : "😈"}</div>
+            <h1
+              className="text-4xl md:text-5xl font-black mb-3 leading-tight"
+              style={{ fontFamily: "var(--font-gothic)", color: isGood ? "#80b0ff" : "#ff6060" }}
+            >
+              {isGood ? t.victoryGood : t.victoryEvil}
+            </h1>
+            <p style={{ color: "#7a6a5a" }}>{isGood ? t.victoryGoodSub : t.victoryEvilSub}</p>
+          </div>
+
+          {/* Role reveal — everyone sees all roles */}
+          <div className="gothic-card rounded-2xl p-6 mb-8">
+            <p className="text-xs tracking-widest uppercase mb-4" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              {t.rolesRevealed}
+            </p>
+            <div className="space-y-2">
+              {nonStorytellers
+                .sort((a, b) => {
+                  const ra = getRoleById(roleAssignments[a.id]);
+                  const rb = getRoleById(roleAssignments[b.id]);
+                  if (ra?.team === rb?.team) return 0;
+                  return ra?.team === "evil" ? 1 : -1;
+                })
+                .map((p) => {
+                  const role = getRoleById(roleAssignments[p.id]);
+                  const isEvil = role?.team === "evil";
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between px-4 py-3 rounded-xl"
+                      style={{ background: isEvil ? "rgba(139,26,26,0.2)" : "rgba(74,111,165,0.15)" }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                          style={{ background: isEvil ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.3)", color: "#e8d5b0" }}
+                        >
+                          {!p.isAlive ? "💀" : p.name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <span style={{ color: p.isAlive ? "#e8d5b0" : "#5a4a3a" }}>{p.name}</span>
+                          {!p.isAlive && <span className="text-xs ml-2" style={{ color: "#5a4a3a" }}>({t.dead})</span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium" style={{ color: isEvil ? "#ff8080" : "#80b0ff", fontFamily: "var(--font-gothic)" }}>
+                          {role?.name[lang] ?? "—"}
+                        </div>
+                        <div className="text-xs" style={{ color: "#5a4a3a" }}>{role?.type}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          <Link href="/" className="btn-gothic-primary w-full py-4 rounded-xl font-bold text-lg text-center no-underline block" style={{ fontFamily: "var(--font-gothic)" }}>
+            ⚔ {t.playAgain}
+          </Link>
         </div>
       </div>
     );
