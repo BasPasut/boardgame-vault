@@ -216,9 +216,14 @@ function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th";
             {game.players} {t.players}
           </span>
           {game.available ? (
-            <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
-              {t.playNow} →
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline">
+                📖
+              </Link>
+              <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
+                {t.playNow} →
+              </Link>
+            </div>
           ) : (
             <span className="text-xs italic" style={{ color: "#4a3a2a" }}>{t.comingSoon}</span>
           )}

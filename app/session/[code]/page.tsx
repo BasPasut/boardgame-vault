@@ -334,7 +334,12 @@ function SessionRoom() {
         <div className="relative z-10 max-w-2xl mx-auto px-6 py-10">
           <div className="flex items-center justify-between mb-8">
             <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
-            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+            <div className="flex gap-2">
+              <Link href={`/guide/${dbSession?.game_id ?? "shadows-over-thornwick"}`} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">
+                📖 {lang === "en" ? "Guide" : "วิธีเล่น"}
+              </Link>
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+            </div>
           </div>
 
           <div className="text-center mb-8">
@@ -442,7 +447,8 @@ function SessionRoom() {
                 </div>
                 <div className="p-4 text-center">
                   <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{revealedRole?.name[lang]}</div>
-                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>{revealedRole?.ability[lang]}</div>
+                  <div className="text-xs mb-2 px-1 leading-relaxed font-medium" style={{ color: "#d4af37" }}>{revealedRole?.ability[lang]}</div>
+                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#7a6a5a" }}>{revealedRole?.description[lang]}</div>
                   <div className="text-xs px-3 py-1 rounded-full inline-block font-medium" style={{ background: revealedRole?.team === "evil" ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.4)", color: revealedRole?.team === "evil" ? "#ff8080" : "#80b0ff" }}>
                     {revealedRole?.team === "evil" ? t.evil : t.good}
                   </div>
