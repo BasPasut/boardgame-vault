@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { generatePlayerId } from "@/lib/utils/session";
@@ -46,6 +46,15 @@ interface DbSession {
   game_state: SoTGameState;
 }
 
+interface ChatMessage {
+  id: string;
+  session_code: string;
+  from_id: string;
+  to_id: string;
+  body: string;
+  created_at: string;
+}
+
 interface DbPlayer {
   id: string;
   session_code: string;
@@ -60,6 +69,156 @@ function toPlayer(p: DbPlayer): Player {
     isAlive: p.player_state.is_alive,
     isStoryteller: p.player_state.is_storyteller,
   };
+}
+
+// ---------- Chat Panel ----------
+interface ChatPanelProps {
+  myPlayerId: string | null;
+  isHost: boolean;
+  players: Player[];
+  chatOpen: boolean;
+  setChatOpen: (v: boolean) => void;
+  chatTarget: string | null;
+  setChatTarget: (v: string | null) => void;
+  chatInput: string;
+  setChatInput: (v: string) => void;
+  unreadCount: number;
+  setUnreadCount: (v: number) => void;
+  visibleMessages: ChatMessage[];
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+  lang: "en" | "th";
+  onSend: () => void;
+}
+
+function ChatPanel({
+  myPlayerId, isHost, players, chatOpen, setChatOpen,
+  chatTarget, setChatTarget, chatInput, setChatInput,
+  unreadCount, setUnreadCount, visibleMessages,
+  messagesEndRef, lang, onSend,
+}: ChatPanelProps) {
+  if (!myPlayerId) return null;
+
+  const storyteller = players.find(p => p.isStoryteller);
+  const nonST = players.filter(p => !p.isStoryteller);
+  const threadPartner = isHost
+    ? (chatTarget ? players.find(p => p.id === chatTarget) : null)
+    : storyteller;
+
+  const openChat = () => {
+    setChatOpen(true);
+    setUnreadCount(0);
+    if (!isHost && storyteller) setChatTarget(storyteller.id);
+  };
+
+  return (
+    <>
+      {!chatOpen && (
+        <button
+          onClick={openChat}
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105"
+          style={{ background: "linear-gradient(135deg, #2d1b4e, #1a0a2e)", border: "1px solid rgba(212,175,55,0.4)" }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold" style={{ background: "#8b1a1a", color: "#e8d5b0" }}>
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {chatOpen && (
+        <div
+          className="fixed bottom-0 right-0 z-50 sm:bottom-6 sm:right-6 w-full sm:w-80 flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
+          style={{ height: "420px", background: "linear-gradient(160deg, #1a0a2e 0%, #0d0a1a 100%)", border: "1px solid rgba(212,175,55,0.25)" }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
+            {isHost && chatTarget && (
+              <button onClick={() => setChatTarget(null)} className="text-sm" style={{ color: "#d4af37" }}>←</button>
+            )}
+            <span className="flex-1 text-sm font-medium truncate" style={{ color: threadPartner ? "#e8d5b0" : "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              {threadPartner ? threadPartner.name : (lang === "en" ? "Private Chat" : "แชทส่วนตัว")}
+            </span>
+            <button onClick={() => setChatOpen(false)} className="text-base leading-none" style={{ color: "#5a4a3a" }}>✕</button>
+          </div>
+
+          {/* Storyteller: player list */}
+          {isHost && !chatTarget ? (
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              {nonST.length === 0 ? (
+                <p className="text-center text-sm mt-10" style={{ color: "#5a4a3a" }}>
+                  {lang === "en" ? "No players yet" : "ยังไม่มีผู้เล่น"}
+                </p>
+              ) : nonST.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setChatTarget(p.id)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:opacity-80"
+                  style={{ background: "rgba(45,27,78,0.5)" }}
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: "rgba(139,26,26,0.25)", color: "#e8d5b0" }}>
+                    {p.name[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm" style={{ color: "#e8d5b0" }}>{p.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Thread */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {visibleMessages.length === 0 && (
+                  <p className="text-center text-sm mt-10" style={{ color: "#5a4a3a" }}>
+                    {lang === "en" ? "No messages yet..." : "ยังไม่มีข้อความ..."}
+                  </p>
+                )}
+                {visibleMessages.map(m => {
+                  const isMine = m.from_id === myPlayerId;
+                  return (
+                    <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className="max-w-[75%] px-3 py-2 text-sm leading-snug"
+                        style={{
+                          background: isMine ? "rgba(212,175,55,0.18)" : "rgba(45,27,78,0.7)",
+                          color: "#e8d5b0",
+                          borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                        }}
+                      >
+                        {m.body}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+              {/* Input */}
+              <div className="flex-shrink-0 p-3" style={{ borderTop: "1px solid rgba(212,175,55,0.1)" }}>
+                <div className="flex gap-2">
+                  <input
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && onSend()}
+                    placeholder={lang === "en" ? "Type a message..." : "พิมพ์ข้อความ..."}
+                    className="flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none"
+                    style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.2)", color: "#e8d5b0" }}
+                  />
+                  <button
+                    onClick={onSend}
+                    disabled={!chatInput.trim()}
+                    className="px-3 py-2 rounded-xl font-bold disabled:opacity-40 transition-opacity"
+                    style={{ background: "rgba(212,175,55,0.2)", color: "#d4af37" }}
+                  >→</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 // ---------- Component ----------
@@ -80,6 +239,12 @@ function SessionRoom() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatTarget, setChatTarget] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
@@ -90,6 +255,14 @@ function SessionRoom() {
   const nightIndex = gs?.night_index ?? 0;
   const roleAssignments = gs?.role_assignments ?? {};
   const joined = myPlayer !== null;
+  const storytellerId = players.find(p => p.isStoryteller)?.id ?? null;
+  const effectiveChatTarget = isHost ? chatTarget : storytellerId;
+  const visibleMessages = myPlayerId && effectiveChatTarget
+    ? messages.filter(m =>
+        (m.from_id === myPlayerId && m.to_id === effectiveChatTarget) ||
+        (m.from_id === effectiveChatTarget && m.to_id === myPlayerId)
+      )
+    : [];
 
   const nightWakeOrder = FIRST_SHADOWS_ROLES
     .filter((r) => r.firstNight !== undefined || r.otherNights !== undefined)
@@ -192,13 +365,15 @@ function SessionRoom() {
     if (storedId) setMyPlayerId(storedId);
 
     async function load() {
-      const [{ data: sessionData }, { data: playersData }] = await Promise.all([
+      const [{ data: sessionData }, { data: playersData }, { data: messagesData }] = await Promise.all([
         supabase.from("sessions").select("*").eq("code", code).single(),
         supabase.from("players").select("*").eq("session_code", code).order("joined_at"),
+        supabase.from("messages").select("*").eq("session_code", code).order("created_at"),
       ]);
       if (!sessionData) { setNotFound(true); setLoading(false); return; }
       setDbSession(sessionData as DbSession);
       setPlayers((playersData ?? []).map(toPlayer));
+      setMessages((messagesData ?? []) as ChatMessage[]);
       setLoading(false);
     }
     load();
@@ -219,6 +394,12 @@ function SessionRoom() {
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "players", filter: `session_code=eq.${code}` }, (payload) => {
         setPlayers((prev) => prev.map((x) => x.id === (payload.new as DbPlayer).id ? toPlayer(payload.new as DbPlayer) : x));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `session_code=eq.${code}` }, (payload) => {
+        const msg = payload.new as ChatMessage;
+        setMessages(prev => [...prev, msg]);
+        const storedId = localStorage.getItem(`bgv_player_${code}`);
+        if (msg.to_id === storedId) setUnreadCount(c => c + 1);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -314,6 +495,18 @@ function SessionRoom() {
       game_state: { ...gs, winner },
     }).eq("code", code);
   };
+
+  const sendMessage = async () => {
+    const target = isHost ? chatTarget : players.find(p => p.isStoryteller)?.id ?? null;
+    if (!myPlayerId || !target || !chatInput.trim()) return;
+    const body = chatInput.trim();
+    setChatInput("");
+    await supabase.from("messages").insert({ session_code: code, from_id: myPlayerId, to_id: target, body });
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, chatTarget]);
 
   // ---------- Loading ----------
   if (loading) {
@@ -428,6 +621,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }
@@ -560,6 +754,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }
@@ -619,6 +814,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }

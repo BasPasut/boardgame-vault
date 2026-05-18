@@ -95,6 +95,9 @@ function CreateSessionForm() {
       return;
     }
 
+    // Background cleanup — delete sessions older than 24h
+    supabase.from("sessions").delete().lt("created_at", new Date(Date.now() - 86400000).toISOString()).then(() => {});
+
     localStorage.setItem(`bgv_player_${code}`, playerId);
     router.push(`/session/${code}?host=true`);
   };
