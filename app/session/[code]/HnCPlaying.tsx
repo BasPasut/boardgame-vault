@@ -123,7 +123,6 @@ function ColorGrid({
           style={{
             border: "2px solid rgba(212,175,55,0.35)",
             boxShadow: "0 0 0 1px rgba(0,0,0,0.5), 0 8px 40px rgba(0,0,0,0.7), 0 0 60px rgba(212,175,55,0.05)",
-            background: "rgba(0,0,0,0.5)",
           }}
         >
           <div
@@ -133,8 +132,6 @@ function ColorGrid({
               gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
               gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
               aspectRatio: `${GRID_COLS}/${GRID_ROWS}`,
-              gap: "1px",
-              background: "rgba(0,0,0,0.35)",
             }}
           >
             {Array.from({ length: GRID_ROWS }, (_, y) =>

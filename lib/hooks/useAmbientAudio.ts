@@ -80,7 +80,10 @@ export function useAmbientAudio(src: string | null) {
       if (audio) {
         if (muteFadeRef.current) clearInterval(muteFadeRef.current);
         if (next) {
-          muteFadeRef.current = fadeVolume(audio, 0, 500);
+          // Fade out then actually pause — volume=0 alone doesn't stop iOS audio
+          muteFadeRef.current = fadeVolume(audio, 0, 500, () => {
+            audio.pause();
+          });
         } else {
           audio.play().catch(() => {});
           muteFadeRef.current = fadeVolume(audio, MAX_VOL, 500);
