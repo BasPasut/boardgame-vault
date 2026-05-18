@@ -864,17 +864,18 @@ function SessionRoom() {
   if (phase === "day") {
     return (
       <div className="min-h-screen" style={{ background: "linear-gradient(180deg, #1a0f00 0%, #0d0a1a 100%)" }}>
-        <div className="max-w-2xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between mb-6">
+        <div className="sticky top-0 z-20" style={{ background: "rgba(26,15,0,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
+          <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
             <div>
-              <div className="text-xs tracking-widest mb-1" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              <div className="text-xs tracking-widest mb-0.5" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                 {lang === "en" ? "SHADOWS OVER THORNWICK" : "เงามืดเหนือธอร์นวิค"}
               </div>
               <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
             </div>
             <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
           </div>
-
+        </div>
+        <div className="max-w-2xl mx-auto px-6 py-6">
           <p className="mb-6 italic" style={{ color: "#7a6a5a" }}>{t.discuss}</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
@@ -929,12 +930,13 @@ function SessionRoom() {
   if (phase === "night") {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(180deg, #000510 0%, #0d0a1a 100%)" }}>
-        <div className="max-w-2xl mx-auto px-6 py-8 w-full">
-          <div className="flex items-center justify-between mb-6">
+        <div className="sticky top-0 z-20" style={{ background: "rgba(0,5,16,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
+          <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
             <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>🌙 {t.night} {day}</h2>
             <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
           </div>
-
+        </div>
+        <div className="max-w-2xl mx-auto px-6 py-6 w-full">
           <div className="text-center py-8 mb-6 gothic-card rounded-2xl">
             <div className="text-5xl mb-3">🌕</div>
             <p className="text-lg italic" style={{ color: "#7a6a5a" }}>
