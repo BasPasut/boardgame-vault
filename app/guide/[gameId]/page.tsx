@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
+import { getLang, saveLang } from "@/lib/utils/lang";
 import { FIRST_SHADOWS_ROLES } from "@/lib/games/shadows-over-thornwick/roles";
 import type { Role } from "@/types/game";
 import { Suspense } from "react";
@@ -179,7 +180,8 @@ function GuideContent() {
   const gameId = params.gameId as string;
   const fromSession = searchParams.get("from");
   const guide = GUIDES[gameId as keyof typeof GUIDES];
-  const [lang, setLang] = useState<"en" | "th">("en");
+  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
+  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
 
   if (!guide) {
     return (

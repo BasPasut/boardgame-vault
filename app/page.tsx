@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { getLang, saveLang } from "@/lib/utils/lang";
 
 const GAMES = [
   {
@@ -47,7 +48,8 @@ const GAMES = [
 ];
 
 export default function HomePage() {
-  const [lang, setLang] = useState<"en" | "th">("en");
+  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
+  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [joinCode, setJoinCode] = useState("");
 
   const t = {

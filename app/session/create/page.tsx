@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { generateSessionCode, generatePlayerId } from "@/lib/utils/session";
+import { getLang, saveLang } from "@/lib/utils/lang";
 import { supabase } from "@/lib/supabase";
 import { Suspense } from "react";
 
@@ -28,7 +29,8 @@ function CreateSessionForm() {
   const searchParams = useSearchParams();
   const defaultGame = searchParams.get("game") ?? "shadows-over-thornwick";
 
-  const [lang, setLang] = useState<"en" | "th">("en");
+  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
+  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [name, setName] = useState("");
   const [selectedGame, setSelectedGame] = useState(defaultGame);
   const [loading, setLoading] = useState(false);

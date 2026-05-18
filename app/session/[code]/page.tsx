@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { generatePlayerId } from "@/lib/utils/session";
+import { getLang, saveLang } from "@/lib/utils/lang";
 import Image from "next/image";
 import QRCode from "react-qr-code";
 import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/shadows-over-thornwick/roles";
@@ -269,7 +270,8 @@ function SessionRoom() {
   const code = (params.code as string).toUpperCase();
   const isHostParam = searchParams.get("host") === "true";
 
-  const [lang, setLang] = useState<"en" | "th">("en");
+  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
+  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [dbSession, setDbSession] = useState<DbSession | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
