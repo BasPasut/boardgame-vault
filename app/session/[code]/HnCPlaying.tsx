@@ -42,28 +42,6 @@ interface Props {
   myPlayerId: string | null;
 }
 
-// ---------- Audio icons ----------
-function AudioOnIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-      <path d="M3 9h5l7-5v16l-7-5H3z" stroke="#d4af37" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(212,175,55,0.1)" />
-      <path d="M7.5 10.5 L9 12 L7.5 13.5 L6 12 Z" stroke="#d4af37" strokeWidth="1" fill="rgba(212,175,55,0.25)" />
-      <path d="M17 9.5a4 4 0 0 1 0 5" stroke="#d4af37" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M19.5 7a7.5 7.5 0 0 1 0 10" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.45" />
-    </svg>
-  );
-}
-function AudioOffIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-      <path d="M3 9h5l7-5v16l-7-5H3z" stroke="#d4af37" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(212,175,55,0.05)" strokeOpacity="0.5" />
-      <path d="M7.5 10.5 L9 12 L7.5 13.5 L6 12 Z" stroke="#d4af37" strokeWidth="1" fill="none" strokeOpacity="0.35" />
-      <line x1="17" y1="9" x2="22" y2="15" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="22" y1="9" x2="17" y2="15" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 // ---------- Color Grid (30×16) ----------
 function ColorGrid({
   gs,
@@ -231,7 +209,8 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [clueInput, setClueInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { muted, toggleMute } = useAmbientAudio("/audio/ambient-lobby.mp3");
+  // H&C has no audio system yet — pass null to suppress playback
+  useAmbientAudio(null);
 
   const gs = dbSession.game_state;
   const phase = dbSession.phase;
@@ -387,13 +366,6 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   // ---------- Shared header ----------
   const HeaderRight = () => (
     <div className="flex items-center gap-2">
-      <button
-        onClick={toggleMute}
-        className="btn-gothic-secondary px-3 py-1.5 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ opacity: muted ? 0.5 : 1 }}
-      >
-        {muted ? <AudioOffIcon /> : <AudioOnIcon />}
-      </button>
       <button
         onClick={() => setLang(lang === "en" ? "th" : "en")}
         className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"

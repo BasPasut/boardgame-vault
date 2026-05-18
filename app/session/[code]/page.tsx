@@ -389,11 +389,16 @@ function SessionRoom() {
       )
     : [];
 
-  const audioSrc = phase === "night"
-    ? "/audio/ambient-night.mp3"
-    : phase === "day"
-    ? "/audio/ambient-day.mp3"
-    : "/audio/ambient-lobby.mp3";
+  // Only SoT has ambient audio — add game IDs here when they get audio
+  const GAMES_WITH_AUDIO = ["shadows-over-thornwick"];
+  const hasAudio = GAMES_WITH_AUDIO.includes(dbSession?.game_id ?? "shadows-over-thornwick");
+  const audioSrc = hasAudio
+    ? phase === "night"
+      ? "/audio/ambient-night.mp3"
+      : phase === "day"
+      ? "/audio/ambient-day.mp3"
+      : "/audio/ambient-lobby.mp3"
+    : null;
   const { muted, toggleMute } = useAmbientAudio(audioSrc);
 
   const assignedRoleIds = new Set(Object.values(roleAssignments));
@@ -753,7 +758,7 @@ function SessionRoom() {
                 <GrimoireIcon />
                 {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
-              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-2 rounded-lg flex items-center justify-center" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
+              {hasAudio && <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-2 rounded-lg flex items-center justify-center" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>}
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
