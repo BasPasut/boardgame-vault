@@ -10,6 +10,21 @@ import { supabase } from "@/lib/supabase";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
+// ---------- Icons ----------
+function GrimoireIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="2" width="14" height="20" rx="2" stroke="#d4af37" strokeWidth="1.5" />
+      <line x1="7" y1="2" x2="7" y2="22" stroke="#d4af37" strokeWidth="1.5" />
+      <rect x="17" y="10" width="4" height="4" rx="1" stroke="#d4af37" strokeWidth="1.2" />
+      <line x1="17" y1="12" x2="21" y2="12" stroke="#d4af37" strokeWidth="1.2" />
+      <path d="M13 9 L15 12 L13 15 L11 12 Z" stroke="#d4af37" strokeWidth="1.2" fill="rgba(212,175,55,0.25)" />
+      <line x1="9" y1="5.5" x2="15" y2="5.5" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" />
+      <line x1="9" y1="18.5" x2="14" y2="18.5" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ---------- DB types ----------
 interface SoTGameState {
   script_id: string;
@@ -335,8 +350,9 @@ function SessionRoom() {
           <div className="flex items-center justify-between mb-8">
             <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
             <div className="flex gap-2">
-              <Link href={`/guide/${dbSession?.game_id ?? "shadows-over-thornwick"}`} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">
-                📖 {lang === "en" ? "Guide" : "วิธีเล่น"}
+              <Link href={`/guide/${dbSession?.game_id ?? "shadows-over-thornwick"}`} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline flex items-center gap-1.5">
+                <GrimoireIcon />
+                {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
             </div>

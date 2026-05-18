@@ -217,8 +217,8 @@ function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th";
           </span>
           {game.available ? (
             <div className="flex items-center gap-2">
-              <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline">
-                📖
+              <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline flex items-center justify-center" title={lang === "en" ? "How to Play" : "วิธีเล่น"}>
+                <GrimoireIcon />
               </Link>
               <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
                 {t.playNow} →
@@ -230,6 +230,25 @@ function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th";
         </div>
       </div>
     </div>
+  );
+}
+
+function GrimoireIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+      {/* Cover */}
+      <rect x="3" y="2" width="14" height="20" rx="2" stroke="#d4af37" strokeWidth="1.5" />
+      {/* Spine */}
+      <line x1="7" y1="2" x2="7" y2="22" stroke="#d4af37" strokeWidth="1.5" />
+      {/* Clasp band */}
+      <rect x="17" y="10" width="4" height="4" rx="1" stroke="#d4af37" strokeWidth="1.2" />
+      <line x1="17" y1="12" x2="21" y2="12" stroke="#d4af37" strokeWidth="1.2" />
+      {/* Ornament — diamond rune */}
+      <path d="M13 9 L15 12 L13 15 L11 12 Z" stroke="#d4af37" strokeWidth="1.2" fill="rgba(212,175,55,0.25)" />
+      {/* Text lines */}
+      <line x1="9" y1="5.5" x2="15" y2="5.5" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" />
+      <line x1="9" y1="18.5" x2="14" y2="18.5" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" />
+    </svg>
   );
 }
 
