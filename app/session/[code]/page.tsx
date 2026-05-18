@@ -34,6 +34,7 @@ interface SoTGameState {
   day_number: number;
   night_index: number;
   role_assignments: Record<string, string>;
+  bluff_assignments?: Record<string, string>;
   winner?: "good" | "evil";
 }
 
@@ -311,8 +312,14 @@ function SessionRoom() {
     : [];
 
   const assignedRoleIds = new Set(Object.values(roleAssignments));
+  const deadRoleIds = new Set(
+    players.filter(p => !p.isAlive && !p.isStoryteller).map(p => roleAssignments[p.id]).filter(Boolean)
+  );
   const nightWakeOrder = FIRST_SHADOWS_ROLES
-    .filter((r) => (r.firstNight !== undefined || r.otherNights !== undefined) && assignedRoleIds.has(r.id))
+    .filter((r) => {
+      const wakesThisNight = day === 1 ? r.firstNight !== undefined : r.otherNights !== undefined;
+      return wakesThisNight && assignedRoleIds.has(r.id) && !deadRoleIds.has(r.id);
+    })
     .sort((a, b) => {
       const aN = day === 1 ? (a.firstNight ?? 99) : (a.otherNights ?? 99);
       const bN = day === 1 ? (b.firstNight ?? 99) : (b.otherNights ?? 99);
@@ -491,15 +498,26 @@ function SessionRoom() {
     } else {
       assignments = assignRoles(nonST.map((p) => p.id), gs.script_id);
     }
+    // Auto-assign a random Townsfolk bluff for the Fool (if present)
+    const bluff_assignments: Record<string, string> = {};
+    const foolPlayerId = Object.entries(assignments).find(([, rid]) => rid === "fool")?.[0];
+    if (foolPlayerId) {
+      const assignedSet = new Set(Object.values(assignments));
+      const available = getRolesByType("townsfolk").filter(r => !assignedSet.has(r.id));
+      if (available.length > 0) {
+        bluff_assignments[foolPlayerId] = available[Math.floor(Math.random() * available.length)].id;
+      }
+    }
     await supabase.from("sessions").update({
       phase: "role-reveal",
-      game_state: { ...gs, role_assignments: assignments },
+      game_state: { ...gs, role_assignments: assignments, bluff_assignments },
     }).eq("code", code);
   };
 
   const handleRevealRole = () => {
     if (!myPlayerId) return;
-    const roleId = roleAssignments[myPlayerId];
+    const bluffRoleId = gs?.bluff_assignments?.[myPlayerId];
+    const roleId = bluffRoleId ?? roleAssignments[myPlayerId];
     if (roleId) { setRevealedRole(getRoleById(roleId) ?? null); setShowRoleCard(true); }
   };
 
@@ -852,6 +870,41 @@ function SessionRoom() {
                 );
               })}
             </div>
+            {(() => {
+              const foolEntry = Object.entries(roleAssignments).find(([, rid]) => rid === "fool");
+              if (!foolEntry) return null;
+              const [foolPid] = foolEntry;
+              const foolPlayer = players.find(p => p.id === foolPid);
+              const bluffId = gs?.bluff_assignments?.[foolPid];
+              const bluffRole = bluffId ? getRoleById(bluffId) : null;
+              return (
+                <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(120,80,200,0.15)", border: "1px solid rgba(120,80,200,0.4)" }}>
+                  <div className="text-xs tracking-widest uppercase mb-2" style={{ color: "#c0a0ff", fontFamily: "var(--font-gothic)" }}>
+                    {lang === "en" ? "Fool's Bluff Role" : "บทบาทปลอมของ Fool"}
+                  </div>
+                  <div className="text-sm mb-2" style={{ color: "#a08060" }}>
+                    {foolPlayer?.name} {lang === "en" ? "will see:" : "จะเห็น:"}
+                    <span className="ml-1 font-medium" style={{ color: "#80b0ff" }}>{bluffRole?.name[lang] ?? "—"}</span>
+                  </div>
+                  <select
+                    value={bluffId ?? ""}
+                    onChange={async (e) => {
+                      if (!gs || !e.target.value) return;
+                      await supabase.from("sessions").update({
+                        game_state: { ...gs, bluff_assignments: { ...(gs.bluff_assignments ?? {}), [foolPid]: e.target.value } },
+                      }).eq("code", code);
+                    }}
+                    className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+                    style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(120,80,200,0.4)", color: "#e8d5b0" }}
+                  >
+                    <option value="">{lang === "en" ? "— pick a bluff —" : "— เลือกบทบาทปลอม —"}</option>
+                    {getRolesByType("townsfolk").map(r => (
+                      <option key={r.id} value={r.id}>{r.name[lang]}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
             <button onClick={handleBeginDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
               ☀️ {t.beginDay}
             </button>
