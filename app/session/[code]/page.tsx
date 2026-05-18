@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { generatePlayerId } from "@/lib/utils/session";
 import Image from "next/image";
+import QRCode from "react-qr-code";
 import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/shadows-over-thornwick/roles";
 import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
 import { supabase } from "@/lib/supabase";
@@ -287,6 +288,7 @@ function SessionRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [customRoleIds, setCustomRoleIds] = useState<string[] | null>(null);
   const [showRolePicker, setShowRolePicker] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
@@ -610,9 +612,29 @@ function SessionRoom() {
           <div className="gothic-card rounded-2xl p-6 mb-6 text-center">
             <div className="text-xs tracking-widest uppercase mb-3" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.shareCode}</div>
             <div className="text-5xl font-black tracking-[0.4em] mb-4 font-mono" style={{ color: "#e8d5b0" }}>{code}</div>
-            <button onClick={copyCode} className="btn-gothic-secondary px-6 py-2 rounded-lg text-sm">
-              {copied ? `✓ ${t.copied}` : t.copy}
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <button onClick={copyCode} className="btn-gothic-secondary px-5 py-2 rounded-lg text-sm">
+                {copied ? `✓ ${t.copied}` : t.copy}
+              </button>
+              <button onClick={() => setShowQR(v => !v)} className="btn-gothic-secondary px-5 py-2 rounded-lg text-sm">
+                {showQR ? (lang === "en" ? "Hide QR" : "ซ่อน QR") : "QR"}
+              </button>
+            </div>
+            {showQR && (
+              <div className="mt-5 flex flex-col items-center gap-3">
+                <div className="p-3 rounded-xl" style={{ background: "#fff" }}>
+                  <QRCode
+                    value={typeof window !== "undefined" ? `${window.location.origin}/session/${code}` : `/session/${code}`}
+                    size={160}
+                    bgColor="#ffffff"
+                    fgColor="#0d0a1a"
+                  />
+                </div>
+                <p className="text-xs" style={{ color: "#5a4a3a" }}>
+                  {lang === "en" ? "Scan to join" : "สแกนเพื่อเข้าร่วม"}
+                </p>
+              </div>
+            )}
           </div>
 
           {!joined && (
