@@ -104,16 +104,18 @@ export default function HomePage() {
       ))}
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <VaultIcon />
-          <span className="text-xl font-bold tracking-widest text-shimmer" style={{ fontFamily: "var(--font-gothic)" }}>
+      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex-shrink-0 scale-75 sm:scale-100 origin-left">
+            <VaultIcon />
+          </div>
+          <span className="text-sm sm:text-xl font-bold tracking-wide sm:tracking-widest text-shimmer truncate" style={{ fontFamily: "var(--font-gothic)" }}>
             BoardgameVault
           </span>
         </div>
         <button
           onClick={() => setLang(lang === "en" ? "th" : "en")}
-          className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+          className="btn-gothic-secondary px-3 sm:px-4 py-2 rounded-lg text-sm font-medium cursor-pointer flex-shrink-0"
         >
           <span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span>
         </button>

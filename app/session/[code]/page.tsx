@@ -169,7 +169,7 @@ function ChatPanel({
           {/* Header */}
           <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
             {isHost && chatTarget && (
-              <button onClick={() => setChatTarget(null)} className="text-sm" style={{ color: "#d4af37" }}>←</button>
+              <button onClick={() => setChatTarget(null)} className="w-9 h-9 flex items-center justify-center rounded-lg text-base flex-shrink-0" style={{ color: "#d4af37", background: "rgba(212,175,55,0.12)", border: "1px solid rgba(212,175,55,0.3)" }}>←</button>
             )}
             <span className="flex-1 text-sm font-medium truncate" style={{ color: threadPartner ? "#e8d5b0" : "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {threadPartner ? threadPartner.name : (lang === "en" ? "Private Chat" : "แชทส่วนตัว")}
@@ -264,6 +264,41 @@ function ChatPanel({
   );
 }
 
+// ---------- My Role Overlay ----------
+function MyRoleOverlay({ role, lang, onClose }: { role: Role; lang: "en" | "th"; onClose: () => void }) {
+  const typeColors: Record<string, string> = { townsfolk: "#80b0ff", outsider: "#c0a0ff", minion: "#ffb080", demon: "#ff6060" };
+  const color = typeColors[role.type] ?? "#e8d5b0";
+  const isEvil = role.team === "evil";
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ background: "linear-gradient(160deg, #1a0a2e, #0d0a1a)", border: `2px solid ${isEvil ? "rgba(139,26,26,0.8)" : "rgba(212,175,55,0.6)"}` }} onClick={e => e.stopPropagation()}>
+        {/* Image */}
+        <div className="relative h-48 w-full" style={{ background: "rgba(0,0,0,0.4)" }}>
+          <Image src={role.image} alt={role.name[lang]} fill className="object-cover object-top" />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent 50%)" }} />
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-sm" style={{ background: "rgba(0,0,0,0.5)", color: "#a08060" }}>✕</button>
+          <div className="absolute bottom-3 left-4">
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: `rgba(${isEvil ? "139,26,26" : "74,111,165"},0.5)`, color: isEvil ? "#ff8080" : "#80b0ff" }}>
+              {role.type}
+            </span>
+          </div>
+        </div>
+        {/* Info */}
+        <div className="p-5">
+          <h2 className="text-2xl font-black mb-3" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{role.name[lang]}</h2>
+          <p className="text-sm leading-relaxed mb-4" style={{ color }}>{role.ability[lang]}</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ background: isEvil ? "rgba(139,26,26,0.3)" : "rgba(74,111,165,0.3)", color: isEvil ? "#ff8080" : "#80b0ff" }}>
+              {isEvil ? (lang === "en" ? "Evil" : "ฝ่ายชั่ว") : (lang === "en" ? "Good" : "ฝ่ายดี")}
+            </span>
+            <p className="text-xs" style={{ color: "#5a4a3a" }}>{lang === "en" ? "Tap outside to close" : "แตะด้านนอกเพื่อปิด"}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Component ----------
 function SessionRoom() {
   const params = useParams();
@@ -292,6 +327,7 @@ function SessionRoom() {
   const [customRoleIds, setCustomRoleIds] = useState<string[] | null>(null);
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showMyRole, setShowMyRole] = useState(false);
 
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
@@ -302,6 +338,10 @@ function SessionRoom() {
   const nightIndex = gs?.night_index ?? 0;
   const roleAssignments = gs?.role_assignments ?? {};
   const joined = myPlayer !== null;
+  const myRoleId = myPlayerId
+    ? (gs?.bluff_assignments?.[myPlayerId] ?? roleAssignments[myPlayerId] ?? null)
+    : null;
+  const myRole = myRoleId ? getRoleById(myRoleId) ?? null : null;
   const storytellerId = players.find(p => p.isStoryteller)?.id ?? null;
   const effectiveChatTarget = isHost ? chatTarget : storytellerId;
   const visibleMessages = myPlayerId && effectiveChatTarget
@@ -926,7 +966,14 @@ function SessionRoom() {
               </div>
               <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
             </div>
-            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+            <div className="flex items-center gap-2">
+              {myRole && !isHost && (
+                <button onClick={() => setShowMyRole(true)} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">
+                  🎴 {lang === "en" ? "My Role" : "บทบาท"}
+                </button>
+              )}
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+            </div>
           </div>
         </div>
         <div className="max-w-2xl mx-auto px-6 py-6">
@@ -975,6 +1022,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
+        {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
         <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
@@ -987,7 +1035,14 @@ function SessionRoom() {
         <div className="sticky top-0 z-20" style={{ background: "rgba(0,5,16,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
           <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
             <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>🌙 {t.night} {day}</h2>
-            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+            <div className="flex items-center gap-2">
+              {myRole && !isHost && (
+                <button onClick={() => setShowMyRole(true)} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">
+                  🎴 {lang === "en" ? "My Role" : "บทบาท"}
+                </button>
+              )}
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+            </div>
           </div>
         </div>
         <div className="max-w-2xl mx-auto px-6 py-6 w-full">
@@ -1036,6 +1091,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
+        {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
         <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
