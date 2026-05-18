@@ -8,24 +8,26 @@ const HUES = [
   240, 252, 264, 276, 288, 300, 312, 324, 336, 348,
 ];
 
-// 16 rows: top = light pastel → bottom = very dark saturated
+// 16 rows: top (A) = very dark jewel tones → bottom (P) = light but clearly coloured
+// Matches the physical board: dark top rows, bright middle, lighter bottom rows.
+// Saturation stays high (≥62%) so every row is identifiable and clueable.
 const ROW_STYLES = [
-  { l: 87, s: 52 },
-  { l: 80, s: 65 },
-  { l: 73, s: 76 },
-  { l: 66, s: 83 },
-  { l: 59, s: 88 },
-  { l: 52, s: 91 },
-  { l: 46, s: 93 },
-  { l: 40, s: 93 },
-  { l: 35, s: 91 },
-  { l: 29, s: 87 },
-  { l: 24, s: 81 },
-  { l: 19, s: 73 },
-  { l: 14, s: 63 },
-  { l: 10, s: 51 },
-  { l: 6,  s: 38 },
-  { l: 3,  s: 24 },
+  { l: 13, s: 75 },  // A
+  { l: 19, s: 82 },  // B
+  { l: 26, s: 87 },  // C
+  { l: 33, s: 90 },  // D
+  { l: 40, s: 92 },  // E
+  { l: 46, s: 93 },  // F
+  { l: 51, s: 93 },  // G
+  { l: 56, s: 92 },  // H
+  { l: 61, s: 91 },  // I
+  { l: 65, s: 89 },  // J
+  { l: 69, s: 86 },  // K
+  { l: 73, s: 83 },  // L
+  { l: 76, s: 79 },  // M
+  { l: 79, s: 74 },  // N
+  { l: 82, s: 68 },  // O
+  { l: 85, s: 62 },  // P
 ];
 
 // Convert HSL to explicit sRGB so every browser/device renders identical colours.
