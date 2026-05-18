@@ -8,26 +8,29 @@ const HUES = [
   240, 252, 264, 276, 288, 300, 312, 324, 336, 348,
 ];
 
-// 16 rows: top (A) = very dark jewel tones → bottom (P) = light but clearly coloured
-// Matches the physical board: dark top rows, bright middle, lighter bottom rows.
-// Saturation stays high (≥62%) so every row is identifiable and clueable.
+// 16 rows per physical game description:
+//   A–D  (top):    bright, neon, vivid pastels   — high L, very high S
+//   E–L  (middle): pure rich "true" hues          — medium L, peak S
+//   M–P  (bottom): dark shades, deep tones        — low L, still-high S
+// Saturation never drops below 74% so even the darkest/lightest rows
+// have a clearly identifiable hue and can be used for clues.
 const ROW_STYLES = [
-  { l: 13, s: 75 },  // A
-  { l: 19, s: 82 },  // B
-  { l: 26, s: 87 },  // C
-  { l: 33, s: 90 },  // D
-  { l: 40, s: 92 },  // E
-  { l: 46, s: 93 },  // F
-  { l: 51, s: 93 },  // G
-  { l: 56, s: 92 },  // H
-  { l: 61, s: 91 },  // I
-  { l: 65, s: 89 },  // J
-  { l: 69, s: 86 },  // K
-  { l: 73, s: 83 },  // L
-  { l: 76, s: 79 },  // M
-  { l: 79, s: 74 },  // N
-  { l: 82, s: 68 },  // O
-  { l: 85, s: 62 },  // P
+  { l: 80, s: 95 },  // A - vivid pastel / bright neon
+  { l: 74, s: 95 },  // B
+  { l: 67, s: 93 },  // C
+  { l: 60, s: 92 },  // D
+  { l: 54, s: 92 },  // E
+  { l: 49, s: 93 },  // F
+  { l: 45, s: 93 },  // G
+  { l: 42, s: 93 },  // H
+  { l: 39, s: 92 },  // I
+  { l: 36, s: 91 },  // J
+  { l: 33, s: 89 },  // K
+  { l: 30, s: 87 },  // L
+  { l: 27, s: 84 },  // M
+  { l: 24, s: 81 },  // N
+  { l: 21, s: 78 },  // O
+  { l: 18, s: 74 },  // P - dark but hue clearly visible
 ];
 
 // Convert HSL to explicit sRGB so every browser/device renders identical colours.
