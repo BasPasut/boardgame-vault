@@ -8,30 +8,19 @@ const HUES = [
   240, 252, 264, 276, 288, 300, 312, 324, 336, 348,
 ];
 
-// 16 rows per physical game description:
-//   A–D  (top):    bright, neon, vivid pastels   — high L, very high S
-//   E–L  (middle): pure rich "true" hues          — medium L, peak S
-//   M–P  (bottom): dark shades, deep tones        — low L, still-high S
-// Saturation never drops below 74% so even the darkest/lightest rows
-// have a clearly identifiable hue and can be used for clues.
-const ROW_STYLES = [
-  { l: 80, s: 95 },  // A - vivid pastel / bright neon
-  { l: 74, s: 95 },  // B
-  { l: 67, s: 93 },  // C
-  { l: 60, s: 92 },  // D
-  { l: 54, s: 92 },  // E
-  { l: 49, s: 93 },  // F
-  { l: 45, s: 93 },  // G
-  { l: 42, s: 93 },  // H
-  { l: 39, s: 92 },  // I
-  { l: 36, s: 91 },  // J
-  { l: 33, s: 89 },  // K
-  { l: 30, s: 87 },  // L
-  { l: 27, s: 84 },  // M
-  { l: 24, s: 81 },  // N
-  { l: 21, s: 78 },  // O
-  { l: 18, s: 74 },  // P - dark but hue clearly visible
-];
+// Row lightness/saturation uses a piecewise linear interpolation
+// between three calibrated anchor points (per physical game spec):
+//   y=0  (Row A, top):    L=75%, S=90%  — bright vivid pastel
+//   y=7  (Row H, middle): L=50%, S=100% — pure maximum-vibrancy hue
+//   y=15 (Row P, bottom): L=30%, S=75%  — deep identifiable dark shade
+function rowStyle(y: number): { l: number; s: number } {
+  if (y <= 7) {
+    const t = y / 7;
+    return { l: Math.round(75 + (50 - 75) * t), s: Math.round(90 + (100 - 90) * t) };
+  }
+  const t = (y - 7) / 8;
+  return { l: Math.round(50 + (30 - 50) * t), s: Math.round(100 + (75 - 100) * t) };
+}
 
 // Convert HSL to explicit sRGB so every browser/device renders identical colours.
 // Leaving it as hsl() lets iOS Safari interpret it in Display P3, causing
@@ -51,7 +40,7 @@ function hslToRgb(h: number, s: number, l: number): string {
 
 export function getColor(x: number, y: number): string {
   const hue = HUES[x] ?? 0;
-  const { l, s } = ROW_STYLES[y] ?? { l: 50, s: 80 };
+  const { l, s } = rowStyle(y);
   return hslToRgb(hue, s, l);
 }
 
