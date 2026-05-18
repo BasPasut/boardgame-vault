@@ -15,6 +15,40 @@ import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
 // ---------- Icons ----------
+function AudioOnIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+      {/* Horn body */}
+      <path d="M3 9h5l7-5v16l-7-5H3z" stroke="#d4af37" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(212,175,55,0.1)" />
+      {/* Diamond rune on horn face — same motif as GrimoireIcon */}
+      <path d="M7.5 10.5 L9 12 L7.5 13.5 L6 12 Z" stroke="#d4af37" strokeWidth="1" fill="rgba(212,175,55,0.25)" />
+      {/* Sound arc inner */}
+      <path d="M17 9.5a4 4 0 0 1 0 5" stroke="#d4af37" strokeWidth="1.4" strokeLinecap="round" />
+      {/* Sound arc outer — faint */}
+      <path d="M19.5 7a7.5 7.5 0 0 1 0 10" stroke="#d4af37" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.45" />
+      {/* Decorative top line — like grimoire text lines */}
+      <line x1="3" y1="9" x2="8" y2="9" stroke="#d4af37" strokeWidth="0.8" strokeLinecap="round" strokeOpacity="0.4" />
+    </svg>
+  );
+}
+
+function AudioOffIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+      {/* Horn body — dimmed */}
+      <path d="M3 9h5l7-5v16l-7-5H3z" stroke="#d4af37" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(212,175,55,0.05)" strokeOpacity="0.5" />
+      {/* Diamond rune — faded */}
+      <path d="M7.5 10.5 L9 12 L7.5 13.5 L6 12 Z" stroke="#d4af37" strokeWidth="1" fill="none" strokeOpacity="0.35" />
+      {/* Gothic cross-slash silencing the horn */}
+      <line x1="17" y1="9" x2="22" y2="15" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="22" y1="9" x2="17" y2="15" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Small corner diamonds at slash ends */}
+      <circle cx="17" cy="9" r="0.8" fill="#d4af37" fillOpacity="0.6" />
+      <circle cx="22" cy="15" r="0.8" fill="#d4af37" fillOpacity="0.6" />
+    </svg>
+  );
+}
+
 function GrimoireIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -669,7 +703,7 @@ function SessionRoom() {
                 <GrimoireIcon />
                 {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
-              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-2 rounded-lg text-sm">{muted ? "🔇" : "🔊"}</button>
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-2 rounded-lg flex items-center justify-center" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
@@ -981,7 +1015,7 @@ function SessionRoom() {
                   🎴 {lang === "en" ? "My Role" : "บทบาท"}
                 </button>
               )}
-              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">{muted ? "🔇" : "🔊"}</button>
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg flex items-center justify-center flex-shrink-0" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
@@ -1051,7 +1085,7 @@ function SessionRoom() {
                   🎴 {lang === "en" ? "My Role" : "บทบาท"}
                 </button>
               )}
-              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">{muted ? "🔇" : "🔊"}</button>
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg flex items-center justify-center flex-shrink-0" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
