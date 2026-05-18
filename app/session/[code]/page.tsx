@@ -10,6 +10,7 @@ import QRCode from "react-qr-code";
 import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/shadows-over-thornwick/roles";
 import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
 import { supabase } from "@/lib/supabase";
+import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
@@ -351,6 +352,13 @@ function SessionRoom() {
       )
     : [];
 
+  const audioSrc = phase === "night"
+    ? "/audio/ambient-night.mp3"
+    : phase === "day"
+    ? "/audio/ambient-day.mp3"
+    : "/audio/ambient-lobby.mp3";
+  const { muted, toggleMute } = useAmbientAudio(audioSrc);
+
   const assignedRoleIds = new Set(Object.values(roleAssignments));
   const deadRoleIds = new Set(
     players.filter(p => !p.isAlive && !p.isStoryteller).map(p => roleAssignments[p.id]).filter(Boolean)
@@ -661,6 +669,7 @@ function SessionRoom() {
                 <GrimoireIcon />
                 {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-2 rounded-lg text-sm">{muted ? "🔇" : "🔊"}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
@@ -972,6 +981,7 @@ function SessionRoom() {
                   🎴 {lang === "en" ? "My Role" : "บทบาท"}
                 </button>
               )}
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">{muted ? "🔇" : "🔊"}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
@@ -1041,6 +1051,7 @@ function SessionRoom() {
                   🎴 {lang === "en" ? "My Role" : "บทบาท"}
                 </button>
               )}
+              <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">{muted ? "🔇" : "🔊"}</button>
               <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
