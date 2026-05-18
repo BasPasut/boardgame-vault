@@ -411,10 +411,26 @@ function SessionRoom() {
       return aN - bN;
     });
 
+  // Per-game lobby strings — add new games here
+  const GAME_LOBBY_META: Record<string, { en: { lobby: string; lobbySubtitle: string; hostLabel: string; waitingForHost: string; loadingText: string }; th: { lobby: string; lobbySubtitle: string; hostLabel: string; waitingForHost: string; loadingText: string } }> = {
+    "shadows-over-thornwick": {
+      en: { lobby: "The Village Awaits", lobbySubtitle: "Share the code with your friends to join", hostLabel: "Storyteller", waitingForHost: "Waiting for the Storyteller...", loadingText: "Entering Thornwick..." },
+      th: { lobby: "หมู่บ้านรอคอย", lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม", hostLabel: "Storyteller", waitingForHost: "รอ Storyteller...", loadingText: "กำลังเข้าสู่ธอร์นวิค..." },
+    },
+    "hues-and-cues": {
+      en: { lobby: "Color Room Ready", lobbySubtitle: "Share the code with your friends to join", hostLabel: "Host", waitingForHost: "Waiting for the Host to start...", loadingText: "Loading room..." },
+      th: { lobby: "ห้องสีพร้อมแล้ว", lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม", hostLabel: "Host", waitingForHost: "รอ Host เริ่มเกม...", loadingText: "กำลังโหลดห้อง..." },
+    },
+  };
+  const gameId = dbSession?.game_id ?? "shadows-over-thornwick";
+  const gameMeta = (GAME_LOBBY_META[gameId] ?? GAME_LOBBY_META["shadows-over-thornwick"])[lang];
+
   const t = {
     en: {
-      lobby: "The Village Awaits",
-      lobbySubtitle: "Share the code with your friends to join",
+      lobby: gameMeta.lobby,
+      lobbySubtitle: gameMeta.lobbySubtitle,
+      hostLabel: gameMeta.hostLabel,
+      waitingForHost: gameMeta.waitingForHost,
       yourName: "Your Name",
       namePlaceholder: "Enter your name...",
       join: "Join Room",
@@ -443,7 +459,6 @@ function SessionRoom() {
       back: "← Home",
       roomNotFound: "Room not found",
       roomNotFoundDesc: "This room code doesn't exist or has expired.",
-      waitingForHost: "Waiting for the Storyteller...",
       declareWinner: "Declare Winner",
       goodWins: "Good Wins",
       evilWins: "Evil Wins",
@@ -455,8 +470,10 @@ function SessionRoom() {
       playAgain: "Play Again",
     },
     th: {
-      lobby: "หมู่บ้านรอคอย",
-      lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม",
+      lobby: gameMeta.lobby,
+      lobbySubtitle: gameMeta.lobbySubtitle,
+      hostLabel: gameMeta.hostLabel,
+      waitingForHost: gameMeta.waitingForHost,
       yourName: "ชื่อของคุณ",
       namePlaceholder: "ใส่ชื่อของคุณ...",
       join: "เข้าร่วม",
@@ -485,7 +502,6 @@ function SessionRoom() {
       back: "← หน้าแรก",
       roomNotFound: "ไม่พบห้อง",
       roomNotFoundDesc: "รหัสห้องนี้ไม่มีอยู่หรือหมดอายุแล้ว",
-      waitingForHost: "รอ Storyteller...",
       declareWinner: "ประกาศผู้ชนะ",
       goodWins: "ฝ่ายดีชนะ",
       evilWins: "ฝ่ายชั่วชนะ",
@@ -692,7 +708,7 @@ function SessionRoom() {
       <div className="min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
         <div className="text-center">
           <div className="text-4xl mb-4 animate-pulse">🕯️</div>
-          <p style={{ color: "#7a6a5a" }}>Entering Thornwick...</p>
+          <p style={{ color: "#7a6a5a" }}>{lang === "en" ? "Loading room..." : "กำลังโหลดห้อง..."}</p>
         </div>
       </div>
     );
@@ -806,7 +822,7 @@ function SessionRoom() {
                     {p.name[0].toUpperCase()}
                   </div>
                   <span style={{ color: "#e8d5b0" }}>{p.name}</span>
-                  {p.isStoryteller && <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: "rgba(212,175,55,0.15)", color: "#d4af37" }}>Storyteller</span>}
+                  {p.isStoryteller && <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: "rgba(212,175,55,0.15)", color: "#d4af37" }}>{t.hostLabel}</span>}
                   {p.id === myPlayerId && !p.isStoryteller && <span className="text-xs ml-auto" style={{ color: "#5a4a3a" }}>you</span>}
                 </div>
               ))}
