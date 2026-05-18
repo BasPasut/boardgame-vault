@@ -85,7 +85,7 @@ interface ChatPanelProps {
   unreadCount: number;
   setUnreadCount: (v: number) => void;
   visibleMessages: ChatMessage[];
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   lang: "en" | "th";
   onSend: () => void;
 }
