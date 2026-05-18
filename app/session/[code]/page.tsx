@@ -310,8 +310,9 @@ function SessionRoom() {
       )
     : [];
 
+  const assignedRoleIds = new Set(Object.values(roleAssignments));
   const nightWakeOrder = FIRST_SHADOWS_ROLES
-    .filter((r) => r.firstNight !== undefined || r.otherNights !== undefined)
+    .filter((r) => (r.firstNight !== undefined || r.otherNights !== undefined) && assignedRoleIds.has(r.id))
     .sort((a, b) => {
       const aN = day === 1 ? (a.firstNight ?? 99) : (a.otherNights ?? 99);
       const bN = day === 1 ? (b.firstNight ?? 99) : (b.otherNights ?? 99);
