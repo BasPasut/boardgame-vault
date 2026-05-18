@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { FIRST_SHADOWS_ROLES } from "@/lib/games/shadows-over-thornwick/roles";
 import type { Role } from "@/types/game";
 import { Suspense } from "react";
@@ -164,17 +164,9 @@ function RoleCard({ role, lang }: { role: Role; lang: "en" | "th" }) {
       </div>
 
       {/* Ability */}
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-4 py-3">
         <p className="text-sm leading-relaxed font-medium" style={{ color: "#c0a878" }}>
           {role.ability[lang]}
-        </p>
-      </div>
-
-      {/* Description */}
-      <div className="px-4 pb-4 pt-1">
-        <div className="h-px mb-2" style={{ background: meta.border }} />
-        <p className="text-sm leading-relaxed" style={{ color: "#9a8a6a" }}>
-          {role.description[lang]}
         </p>
       </div>
     </div>
@@ -183,7 +175,9 @@ function RoleCard({ role, lang }: { role: Role; lang: "en" | "th" }) {
 
 function GuideContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const gameId = params.gameId as string;
+  const fromSession = searchParams.get("from");
   const guide = GUIDES[gameId as keyof typeof GUIDES];
   const [lang, setLang] = useState<"en" | "th">("en");
 
@@ -223,7 +217,9 @@ function GuideContent() {
 
       {/* Nav strip */}
       <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-3" style={{ background: "rgba(13,10,26,0.95)", borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
-        <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">← {lang === "en" ? "Home" : "หน้าแรก"}</Link>
+        <Link href={fromSession ? `/session/${fromSession}` : "/"} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">
+          ← {fromSession ? (lang === "en" ? "Back" : "กลับ") : (lang === "en" ? "Home" : "หน้าแรก")}
+        </Link>
         <span className="text-xs tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
           {lang === "en" ? "How to Play" : "วิธีเล่น"}
         </span>
@@ -368,8 +364,12 @@ function GuideContent() {
 
         {/* Play CTA */}
         <div className="text-center pb-8">
-          <Link href="/session/create?game=shadows-over-thornwick" className="btn-gothic-primary px-8 py-4 rounded-xl font-bold text-lg no-underline inline-block" style={{ fontFamily: "var(--font-gothic)" }}>
-            ⚔ {lang === "en" ? "Start Playing" : "เริ่มเล่น"}
+          <Link
+            href={fromSession ? `/session/${fromSession}` : `/session/create?game=${gameId}`}
+            className="btn-gothic-primary px-8 py-4 rounded-xl font-bold text-lg no-underline inline-block"
+            style={{ fontFamily: "var(--font-gothic)" }}
+          >
+            ⚔ {fromSession ? (lang === "en" ? "Back to Session" : "กลับสู่เกม") : (lang === "en" ? "Start Playing" : "เริ่มเล่น")}
           </Link>
         </div>
 

@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { generatePlayerId } from "@/lib/utils/session";
-import { FIRST_SHADOWS_ROLES, getRoleById } from "@/lib/games/shadows-over-thornwick/roles";
-import { assignRoles } from "@/lib/games/shadows-over-thornwick/scripts";
+import Image from "next/image";
+import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/shadows-over-thornwick/roles";
+import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
 import { supabase } from "@/lib/supabase";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
@@ -71,11 +72,22 @@ function toPlayer(p: DbPlayer): Player {
   };
 }
 
+function getSuggestedRoleIds(playerCount: number): string[] {
+  const c = getRoleCounts(playerCount);
+  return [
+    ...getRolesByType("townsfolk").slice(0, c.townsfolk).map(r => r.id),
+    ...getRolesByType("outsider").slice(0, c.outsiders).map(r => r.id),
+    ...getRolesByType("minion").slice(0, c.minions).map(r => r.id),
+    ...getRolesByType("demon").slice(0, c.demons).map(r => r.id),
+  ];
+}
+
 // ---------- Chat Panel ----------
 interface ChatPanelProps {
   myPlayerId: string | null;
   isHost: boolean;
   players: Player[];
+  allMessages: ChatMessage[];
   chatOpen: boolean;
   setChatOpen: (v: boolean) => void;
   chatTarget: string | null;
@@ -91,11 +103,13 @@ interface ChatPanelProps {
 }
 
 function ChatPanel({
-  myPlayerId, isHost, players, chatOpen, setChatOpen,
+  myPlayerId, isHost, players, allMessages, chatOpen, setChatOpen,
   chatTarget, setChatTarget, chatInput, setChatInput,
   unreadCount, setUnreadCount, visibleMessages,
   messagesEndRef, lang, onSend,
 }: ChatPanelProps) {
+  const [lastReadMap, setLastReadMap] = useState<Record<string, string>>({});
+
   if (!myPlayerId) return null;
 
   const storyteller = players.find(p => p.isStoryteller);
@@ -104,11 +118,26 @@ function ChatPanel({
     ? (chatTarget ? players.find(p => p.id === chatTarget) : null)
     : storyteller;
 
+  const openThread = (playerId: string) => {
+    setChatTarget(playerId);
+    setLastReadMap(prev => ({ ...prev, [playerId]: new Date().toISOString() }));
+  };
+
   const openChat = () => {
     setChatOpen(true);
     setUnreadCount(0);
-    if (!isHost && storyteller) setChatTarget(storyteller.id);
+    if (!isHost && storyteller) openThread(storyteller.id);
   };
+
+  const unreadFrom = (playerId: string) => {
+    const lastRead = lastReadMap[playerId];
+    return allMessages.filter(m =>
+      m.from_id === playerId && m.to_id === myPlayerId &&
+      (!lastRead || m.created_at > lastRead)
+    ).length;
+  };
+
+  const totalUnread = nonST.reduce((sum, p) => sum + unreadFrom(p.id), 0);
 
   return (
     <>
@@ -121,9 +150,9 @@ function ChatPanel({
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          {unreadCount > 0 && (
+          {(unreadCount > 0 || totalUnread > 0) && (
             <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold" style={{ background: "#8b1a1a", color: "#e8d5b0" }}>
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {(unreadCount + totalUnread) > 9 ? "9+" : unreadCount + totalUnread}
             </span>
           )}
         </button>
@@ -152,19 +181,30 @@ function ChatPanel({
                 <p className="text-center text-sm mt-10" style={{ color: "#5a4a3a" }}>
                   {lang === "en" ? "No players yet" : "ยังไม่มีผู้เล่น"}
                 </p>
-              ) : nonST.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => setChatTarget(p.id)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:opacity-80"
-                  style={{ background: "rgba(45,27,78,0.5)" }}
-                >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: "rgba(139,26,26,0.25)", color: "#e8d5b0" }}>
-                    {p.name[0].toUpperCase()}
-                  </div>
-                  <span className="text-sm" style={{ color: "#e8d5b0" }}>{p.name}</span>
-                </button>
-              ))}
+              ) : nonST.map(p => {
+                const badge = unreadFrom(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => openThread(p.id)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:opacity-80"
+                    style={{ background: badge > 0 ? "rgba(139,26,26,0.2)" : "rgba(45,27,78,0.5)" }}
+                  >
+                    <div className="relative w-8 h-8 flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: "rgba(139,26,26,0.25)", color: "#e8d5b0" }}>
+                        {p.name[0].toUpperCase()}
+                      </div>
+                      {badge > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center font-bold" style={{ background: "#8b1a1a", color: "#e8d5b0", fontSize: "10px" }}>
+                          {badge > 9 ? "9+" : badge}
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex-1 text-sm" style={{ color: badge > 0 ? "#e8d5b0" : "#a08060" }}>{p.name}</span>
+                    {badge > 0 && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#8b1a1a" }} />}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <>
@@ -245,6 +285,8 @@ function SessionRoom() {
   const [chatInput, setChatInput] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [customRoleIds, setCustomRoleIds] = useState<string[] | null>(null);
+  const [showRolePicker, setShowRolePicker] = useState(false);
 
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
@@ -434,7 +476,16 @@ function SessionRoom() {
   const handleStartGame = async () => {
     const nonST = players.filter((p) => !p.isStoryteller);
     if (nonST.length < 5 || !gs) return;
-    const assignments = assignRoles(nonST.map((p) => p.id), gs.script_id);
+    if (customRoleIds && customRoleIds.length !== nonST.length) return;
+    let assignments: Record<string, string>;
+    if (customRoleIds) {
+      const shuffledRoles = [...customRoleIds].sort(() => Math.random() - 0.5);
+      const shuffledPlayers = [...nonST.map(p => p.id)].sort(() => Math.random() - 0.5);
+      assignments = {};
+      shuffledPlayers.forEach((pid, i) => { assignments[pid] = shuffledRoles[i]; });
+    } else {
+      assignments = assignRoles(nonST.map((p) => p.id), gs.script_id);
+    }
     await supabase.from("sessions").update({
       phase: "role-reveal",
       game_state: { ...gs, role_assignments: assignments },
@@ -543,7 +594,7 @@ function SessionRoom() {
           <div className="flex items-center justify-between mb-8">
             <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
             <div className="flex gap-2">
-              <Link href={`/guide/${dbSession?.game_id ?? "shadows-over-thornwick"}`} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline flex items-center gap-1.5">
+              <Link href={`/guide/${dbSession?.game_id ?? "shadows-over-thornwick"}?from=${code}`} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline flex items-center gap-1.5">
                 <GrimoireIcon />
                 {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
@@ -567,17 +618,17 @@ function SessionRoom() {
           {!joined && (
             <div className="gothic-card rounded-2xl p-6 mb-6">
               <label className="block text-sm mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.yourName}</label>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   value={joinName}
                   onChange={(e) => setJoinName(e.target.value)}
                   placeholder={t.namePlaceholder}
                   maxLength={20}
-                  className="flex-1 px-4 py-3 rounded-xl focus:outline-none"
+                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
                   style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
                   onKeyDown={(e) => e.key === "Enter" && handleJoin()}
                 />
-                <button onClick={handleJoin} disabled={joining || !joinName.trim()} className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold disabled:opacity-40">
+                <button onClick={handleJoin} disabled={joining || !joinName.trim()} className="btn-gothic-primary px-5 py-3 rounded-xl font-semibold disabled:opacity-40 whitespace-nowrap">
                   {joining ? "..." : t.join}
                 </button>
               </div>
@@ -602,26 +653,117 @@ function SessionRoom() {
             </div>
           </div>
 
-          {isHost && (
-            <div className="space-y-3">
-              <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
-                + Add Demo Players (for testing)
-              </button>
-              <button
-                onClick={handleStartGame}
-                disabled={players.filter((p) => !p.isStoryteller).length < 5}
-                className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
-                style={{ fontFamily: "var(--font-gothic)" }}
-              >
-                {players.filter((p) => !p.isStoryteller).length < 5 ? t.needMore : `⚔ ${t.startGame}`}
-              </button>
-            </div>
-          )}
+          {isHost && (() => {
+            const nonSTCount = players.filter(p => !p.isStoryteller).length;
+            const rolesValid = !customRoleIds || customRoleIds.length === nonSTCount;
+            const typeColors: Record<string, string> = { townsfolk: "#80b0ff", outsider: "#c0a0ff", minion: "#ffb080", demon: "#ff6060" };
+            const typeLabels: Record<string, { en: string; th: string }> = {
+              townsfolk: { en: "Townsfolk", th: "ทาวน์สโฟล์ค" },
+              outsider: { en: "Outsider", th: "เอาท์ไซเดอร์" },
+              minion: { en: "Minion", th: "มิเนียน" },
+              demon: { en: "Demon", th: "เดมอน" },
+            };
+            const activeRoleIds = customRoleIds ?? (nonSTCount >= 5 ? getSuggestedRoleIds(nonSTCount) : []);
+            return (
+              <div className="space-y-3">
+                <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
+                  + Add Demo Players (for testing)
+                </button>
+
+                {nonSTCount >= 5 && (
+                  <div className="gothic-card rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                        {lang === "en" ? "Roles" : "บทบาท"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {customRoleIds && (
+                          <button onClick={() => { setCustomRoleIds(null); setShowRolePicker(false); }} className="text-xs" style={{ color: "#5a4a3a" }}>
+                            {lang === "en" ? "Reset" : "รีเซ็ต"}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (!showRolePicker && !customRoleIds) setCustomRoleIds(getSuggestedRoleIds(nonSTCount));
+                            setShowRolePicker(v => !v);
+                          }}
+                          className="text-xs btn-gothic-secondary px-3 py-1.5 rounded-lg"
+                        >
+                          {showRolePicker ? "▲" : (lang === "en" ? "Customize ▼" : "ปรับแต่ง ▼")}
+                        </button>
+                      </div>
+                    </div>
+
+                    {!showRolePicker && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeRoleIds.map(id => {
+                          const role = getRoleById(id);
+                          return role ? (
+                            <span key={id} className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(45,27,78,0.5)", color: typeColors[role.type] ?? "#e8d5b0" }}>
+                              {role.name[lang]}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
+                    )}
+
+                    {showRolePicker && customRoleIds && (
+                      <div className="space-y-4">
+                        {(["townsfolk", "outsider", "minion", "demon"] as const).map(type => (
+                          <div key={type}>
+                            <div className="text-xs font-medium mb-2" style={{ color: typeColors[type] }}>{typeLabels[type][lang]}</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {getRolesByType(type).map(role => {
+                                const selected = customRoleIds.includes(role.id);
+                                return (
+                                  <button
+                                    key={role.id}
+                                    onClick={() => setCustomRoleIds(prev => prev
+                                      ? selected ? prev.filter(id => id !== role.id) : [...prev, role.id]
+                                      : prev
+                                    )}
+                                    className="text-xs px-2 py-1 rounded-full transition-all"
+                                    style={{
+                                      background: selected ? "rgba(45,27,78,0.6)" : "rgba(13,10,26,0.5)",
+                                      border: `1px solid ${selected ? typeColors[type] : "rgba(90,74,58,0.3)"}`,
+                                      color: selected ? typeColors[type] : "#5a4a3a",
+                                    }}
+                                  >
+                                    {role.name[lang]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-2 text-xs" style={{ borderTop: "1px solid rgba(212,175,55,0.1)", color: rolesValid ? "#5a9a5a" : "#c08080" }}>
+                          {customRoleIds.length} / {nonSTCount} {lang === "en" ? "roles selected" : "บทบาทที่เลือก"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleStartGame}
+                  disabled={nonSTCount < 5 || !rolesValid}
+                  className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
+                  style={{ fontFamily: "var(--font-gothic)" }}
+                >
+                  {nonSTCount < 5
+                    ? t.needMore
+                    : !rolesValid
+                    ? (lang === "en" ? `Select ${nonSTCount} roles (${customRoleIds?.length ?? 0} chosen)` : `เลือก ${nonSTCount} บทบาท`)
+                    : `⚔ ${t.startGame}`}
+                </button>
+              </div>
+            );
+          })()}
           {!isHost && joined && (
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
-        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }
@@ -650,10 +792,11 @@ function SessionRoom() {
                 <div className="mt-6 text-xs" style={{ color: "#5a4a3a" }}>Tap to reveal</div>
               </div>
               <div className="role-card-back absolute inset-0 rounded-2xl overflow-hidden flex flex-col" style={{ background: "linear-gradient(135deg, #2d1b4e, #0d0a1a)", border: `2px solid ${revealedRole?.team === "evil" ? "rgba(139,26,26,0.8)" : "rgba(212,175,55,0.8)"}` }}>
-                <div className="flex-1 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.3)" }}>
-                  <div className="text-7xl">
-                    {revealedRole?.type === "demon" ? "😈" : revealedRole?.type === "minion" ? "👁️" : revealedRole?.type === "outsider" ? "🃏" : "👤"}
-                  </div>
+                <div className="flex-1 relative overflow-hidden" style={{ background: "rgba(0,0,0,0.3)" }}>
+                  {revealedRole?.image && (
+                    <Image src={revealedRole.image} alt={revealedRole.name[lang]} fill className="object-cover object-top" />
+                  )}
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent 55%)" }} />
                 </div>
                 <div className="p-4 text-center">
                   <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{revealedRole?.name[lang]}</div>
@@ -754,7 +897,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
-        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }
@@ -814,7 +957,7 @@ function SessionRoom() {
             <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
           )}
         </div>
-        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
+        <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
   }
@@ -827,7 +970,7 @@ function SessionRoom() {
 
     return (
       <div
-        className="min-h-screen flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden"
+        className="min-h-screen flex flex-col items-center px-6 pt-10 pb-16 relative overflow-y-auto"
         style={{ background: isGood
           ? "radial-gradient(ellipse at top, #0a1a2e 0%, #0d0a1a 70%)"
           : "radial-gradient(ellipse at top, #2e0a0a 0%, #0d0a1a 70%)" }}
