@@ -8,6 +8,8 @@ import { FIRST_SHADOWS_ROLES } from "@/lib/games/shadows-over-thornwick/roles";
 import type { Role } from "@/types/game";
 import { Suspense } from "react";
 
+// RoleCard has no local state — useState is used by GuideContent for lang toggle
+
 // ---------- Content per game ----------
 const GUIDES = {
   "shadows-over-thornwick": {
@@ -143,30 +145,17 @@ const TYPE_META = {
 };
 
 function RoleCard({ role, lang }: { role: Role; lang: "en" | "th" }) {
-  const [expanded, setExpanded] = useState(false);
   const meta = TYPE_META[role.type as keyof typeof TYPE_META];
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden cursor-pointer transition-all"
-      style={{ background: meta.bg, border: `1px solid ${meta.border}` }}
-      onClick={() => setExpanded((v) => !v)}
-    >
+    <div className="rounded-2xl overflow-hidden" style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
       {/* Role image */}
       <div className="relative h-40 w-full" style={{ background: "rgba(0,0,0,0.3)" }}>
-        <Image
-          src={role.image}
-          alt={role.name[lang]}
-          fill
-          className="object-cover object-top"
-          onError={() => {}}
-        />
+        <Image src={role.image} alt={role.name[lang]} fill className="object-cover object-top" onError={() => {}} />
         <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%)" }} />
         <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
-          <div>
-            <div className="text-base font-bold leading-tight" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
-              {role.name[lang]}
-            </div>
+          <div className="text-base font-bold leading-tight" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
+            {role.name[lang]}
           </div>
           <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
             {meta.label[lang]}
@@ -175,24 +164,18 @@ function RoleCard({ role, lang }: { role: Role; lang: "en" | "th" }) {
       </div>
 
       {/* Ability */}
-      <div className="px-4 pt-3 pb-2">
-        <p className="text-sm leading-relaxed" style={{ color: "#c0a878" }}>
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-sm leading-relaxed font-medium" style={{ color: "#c0a878" }}>
           {role.ability[lang]}
         </p>
       </div>
 
-      {/* Description — tap to expand */}
-      {expanded && (
-        <div className="px-4 pb-4 pt-1">
-          <div className="h-px mb-3" style={{ background: `${meta.border}` }} />
-          <p className="text-sm leading-relaxed" style={{ color: "#9a8a6a" }}>
-            {role.description[lang]}
-          </p>
-        </div>
-      )}
-
-      <div className="px-4 pb-3 text-xs" style={{ color: "#5a4a3a" }}>
-        {expanded ? "▲ " : "▼ "}{lang === "en" ? "Tap for full description" : "แตะเพื่อดูรายละเอียด"}
+      {/* Description */}
+      <div className="px-4 pb-4 pt-1">
+        <div className="h-px mb-2" style={{ background: meta.border }} />
+        <p className="text-sm leading-relaxed" style={{ color: "#9a8a6a" }}>
+          {role.description[lang]}
+        </p>
       </div>
     </div>
   );
