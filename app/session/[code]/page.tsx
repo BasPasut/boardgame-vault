@@ -856,7 +856,7 @@ function SessionRoom() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
         <div className="flex items-center justify-between w-full max-w-md mb-8">
-          <div style={{ color: "#5a4a3a" }}>{lang === "en" ? "Shadows Over Thornwick" : "เงามืดเหนือธอร์นวิค"}</div>
+          <div style={{ color: "#5a4a3a" }}>Shadows Over Thornwick</div>
           <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
         </div>
 
@@ -962,7 +962,7 @@ function SessionRoom() {
           <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
             <div>
               <div className="text-xs tracking-widest mb-0.5" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-                {lang === "en" ? "SHADOWS OVER THORNWICK" : "เงามืดเหนือธอร์นวิค"}
+                SHADOWS OVER THORNWICK
               </div>
               <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
             </div>

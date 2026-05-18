@@ -14,7 +14,7 @@ import { Suspense } from "react";
 // ---------- Content per game ----------
 const GUIDES = {
   "shadows-over-thornwick": {
-    name: { en: "Shadows Over Thornwick", th: "เงามืดเหนือธอร์นวิค" },
+    name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" },
     cover: "/images/games/shadows-over-thornwick/cover.png",
     players: "5–15",
     tagline: {

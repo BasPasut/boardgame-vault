@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { Suspense } from "react";
 
 const GAMES = [
-  { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "เงามืดเหนือธอร์นวิค" }, players: "5–15", available: true },
+  { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" }, players: "5–15", available: true },
   { id: "werewolf", name: { en: "Werewolf", th: "หมาป่า" }, players: "6–20", available: false },
   { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
 ];

@@ -8,7 +8,7 @@ import { getLang, saveLang } from "@/lib/utils/lang";
 const GAMES = [
   {
     id: "shadows-over-thornwick",
-    name: { en: "Shadows Over Thornwick", th: "เงามืดเหนือธอร์นวิค" },
+    name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" },
     description: {
       en: "A social deduction game of murder and mystery in the cursed village of Thornwick.",
       th: "เกมสืบสวนสังคมเกี่ยวกับการฆาตกรรมและความลึกลับในหมู่บ้านต้องสาป ธอร์นวิค",
@@ -125,7 +125,7 @@ export default function HomePage() {
       <section className="relative z-10 flex flex-col items-center text-center px-6 pt-10 pb-16 max-w-4xl mx-auto">
         <div className="mb-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-yellow-700/40 bg-yellow-900/20 text-yellow-400 text-xs tracking-widest uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-          {lang === "en" ? "Shadows Over Thornwick — Now Available" : "เงามืดเหนือธอร์นวิค — เปิดให้เล่นแล้ว"}
+          Shadows Over Thornwick — Now Available
         </div>
 
         <h1 className="text-5xl md:text-7xl font-black mb-4 leading-tight" style={{ fontFamily: "var(--font-gothic)" }}>
