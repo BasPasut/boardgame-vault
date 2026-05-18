@@ -28,10 +28,26 @@ const ROW_STYLES = [
   { l: 3,  s: 24 },
 ];
 
+// Convert HSL to explicit sRGB so every browser/device renders identical colours.
+// Leaving it as hsl() lets iOS Safari interpret it in Display P3, causing
+// different-looking colours on iPhone vs desktop.
+function hslToRgb(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) =>
+    l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const r = Math.round(f(0) * 255);
+  const g = Math.round(f(8) * 255);
+  const b = Math.round(f(4) * 255);
+  return `rgb(${r},${g},${b})`;
+}
+
 export function getColor(x: number, y: number): string {
   const hue = HUES[x] ?? 0;
   const { l, s } = ROW_STYLES[y] ?? { l: 50, s: 80 };
-  return `hsl(${hue}, ${s}%, ${l}%)`;
+  return hslToRgb(hue, s, l);
 }
 
 export function manhattan(

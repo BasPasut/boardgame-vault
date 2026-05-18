@@ -110,6 +110,8 @@ function ColorGrid({
               gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
               gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
               aspectRatio: `${GRID_COLS}/${GRID_ROWS}`,
+              gap: "1px",
+              background: "rgba(0,0,0,0.25)",
             }}
           >
             {Array.from({ length: GRID_ROWS }, (_, y) =>
