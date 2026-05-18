@@ -113,7 +113,7 @@ export default function HomePage() {
           onClick={() => setLang(lang === "en" ? "th" : "en")}
           className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
         >
-          {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
+          <span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span>
         </button>
       </nav>
 

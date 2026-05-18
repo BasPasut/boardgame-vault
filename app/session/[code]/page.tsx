@@ -354,7 +354,7 @@ function SessionRoom() {
                 <GrimoireIcon />
                 {lang === "en" ? "Guide" : "วิธีเล่น"}
               </Link>
-              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
             </div>
           </div>
 
@@ -438,7 +438,7 @@ function SessionRoom() {
       <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
         <div className="flex items-center justify-between w-full max-w-md mb-8">
           <div style={{ color: "#5a4a3a" }}>{lang === "en" ? "Shadows Over Thornwick" : "เงามืดเหนือธอร์นวิค"}</div>
-          <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+          <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
         </div>
 
         <h2 className="text-3xl font-black mb-2 text-center" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.roleRevealTitle}</h2>
@@ -512,7 +512,7 @@ function SessionRoom() {
               </div>
               <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
             </div>
-            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
           </div>
 
           <p className="mb-6 italic" style={{ color: "#7a6a5a" }}>{t.discuss}</p>
@@ -571,7 +571,7 @@ function SessionRoom() {
         <div className="max-w-2xl mx-auto px-6 py-8 w-full">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>🌙 {t.night} {day}</h2>
-            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">{lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}</button>
+            <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
           </div>
 
           <div className="text-center py-8 mb-6 gothic-card rounded-2xl">
@@ -646,7 +646,7 @@ function SessionRoom() {
           {/* Lang toggle */}
           <div className="flex justify-end mb-6">
             <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs">
-              {lang === "en" ? "🇹🇭 TH" : "🇬🇧 EN"}
+              <span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span>
             </button>
           </div>
 
