@@ -463,8 +463,7 @@ function SessionRoom() {
                 </div>
                 <div className="p-4 text-center">
                   <div className="text-xl font-bold mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{revealedRole?.name[lang]}</div>
-                  <div className="text-xs mb-2 px-1 leading-relaxed font-medium" style={{ color: "#d4af37" }}>{revealedRole?.ability[lang]}</div>
-                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#7a6a5a" }}>{revealedRole?.description[lang]}</div>
+                  <div className="text-xs mb-3 px-1 leading-relaxed" style={{ color: "#a08060" }}>{revealedRole?.ability[lang]}</div>
                   <div className="text-xs px-3 py-1 rounded-full inline-block font-medium" style={{ background: revealedRole?.team === "evil" ? "rgba(139,26,26,0.4)" : "rgba(74,111,165,0.4)", color: revealedRole?.team === "evil" ? "#ff8080" : "#80b0ff" }}>
                     {revealedRole?.team === "evil" ? t.evil : t.good}
                   </div>
