@@ -11,6 +11,7 @@ import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/sh
 import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
 import { supabase } from "@/lib/supabase";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
+import { HnCPlaying, type HnCGameState } from "./HnCPlaying";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
@@ -596,6 +597,24 @@ function SessionRoom() {
     }).eq("code", code);
   };
 
+  const handleStartHnC = async () => {
+    if (players.length < 3) return;
+    const shuffled = [...players].sort(() => Math.random() - 0.5).map((p) => p.id);
+    const initialScores: Record<string, number> = {};
+    players.forEach((p) => { initialScores[p.id] = 0; });
+    const state: HnCGameState = {
+      round: 1,
+      total_rounds: players.length,
+      cue_giver_order: shuffled,
+      target: { x: Math.floor(Math.random() * 10), y: Math.floor(Math.random() * 10) },
+      clues: [],
+      sub_phase: "giving-clue",
+      guesses: {},
+      scores: initialScores,
+    };
+    await supabase.from("sessions").update({ phase: "playing", game_state: state }).eq("code", code);
+  };
+
   const handleRevealRole = () => {
     if (!myPlayerId) return;
     const bluffRoleId = gs?.bluff_assignments?.[myPlayerId];
@@ -690,6 +709,18 @@ function SessionRoom() {
     );
   }
 
+  // ---------- HnC PLAYING / ENDED ----------
+  if (dbSession?.game_id === "hues-and-cues" && (phase === "playing" || phase === "ended")) {
+    return (
+      <HnCPlaying
+        code={code}
+        dbSession={dbSession as unknown as Parameters<typeof HnCPlaying>[0]["dbSession"]}
+        players={players}
+        myPlayerId={myPlayerId}
+      />
+    );
+  }
+
   // ---------- LOBBY ----------
   if (phase === "lobby") {
     return (
@@ -779,7 +810,25 @@ function SessionRoom() {
             </div>
           </div>
 
-          {isHost && (() => {
+          {isHost && dbSession?.game_id === "hues-and-cues" && (
+            <div className="space-y-3">
+              <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
+                + Add Demo Players (for testing)
+              </button>
+              <button
+                onClick={handleStartHnC}
+                disabled={players.length < 3}
+                className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
+                style={{ fontFamily: "var(--font-gothic)" }}
+              >
+                {players.length < 3
+                  ? (lang === "en" ? "Need at least 3 players" : "ต้องการผู้เล่นอย่างน้อย 3 คน")
+                  : `🎨 ${lang === "en" ? "Start Game" : "เริ่มเกม"}`}
+              </button>
+            </div>
+          )}
+
+          {isHost && dbSession?.game_id !== "hues-and-cues" && (() => {
             const nonSTCount = players.filter(p => !p.isStoryteller).length;
             const rolesValid = !customRoleIds || customRoleIds.length === nonSTCount;
             const typeColors: Record<string, string> = { townsfolk: "#80b0ff", outsider: "#c0a0ff", minion: "#ffb080", demon: "#ff6060" };

@@ -20,6 +20,19 @@ const GAMES = [
     badge: "bg-red-900/60 text-red-200",
   },
   {
+    id: "hues-and-cues",
+    name: { en: "Hues & Cues", th: "Hues & Cues" },
+    description: {
+      en: "Describe a color in one word. Can your friends find the exact hue?",
+      th: "อธิบายสีด้วยคำเดียว เพื่อนจะหาสีที่ถูกต้องได้มั้ย?",
+    },
+    players: "3–10",
+    image: null,
+    available: true,
+    theme: "from-pink-900 via-purple-900 to-indigo-900",
+    badge: "bg-pink-900/60 text-pink-200",
+  },
+  {
     id: "werewolf",
     name: { en: "Werewolf", th: "หมาป่า" },
     description: {
@@ -221,9 +234,11 @@ function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th";
           </span>
           {game.available ? (
             <div className="flex items-center gap-2">
-              <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline flex items-center justify-center" title={lang === "en" ? "How to Play" : "วิธีเล่น"}>
-                <GrimoireIcon />
-              </Link>
+              {game.id === "shadows-over-thornwick" && (
+                <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline flex items-center justify-center" title={lang === "en" ? "How to Play" : "วิธีเล่น"}>
+                  <GrimoireIcon />
+                </Link>
+              )}
               <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
                 {t.playNow} →
               </Link>

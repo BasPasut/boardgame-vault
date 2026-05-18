@@ -10,6 +10,7 @@ import { Suspense } from "react";
 
 const GAMES = [
   { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" }, players: "5–15", available: true },
+  { id: "hues-and-cues", name: { en: "Hues & Cues", th: "Hues & Cues" }, players: "3–10", available: true },
   { id: "werewolf", name: { en: "Werewolf", th: "หมาป่า" }, players: "6–20", available: false },
   { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
 ];
@@ -21,6 +22,16 @@ const INITIAL_GAME_STATE: Record<string, object> = {
     day_number: 1,
     night_index: 0,
     role_assignments: {},
+  },
+  "hues-and-cues": {
+    round: 0,
+    total_rounds: 0,
+    cue_giver_order: [],
+    target: { x: 0, y: 0 },
+    clues: [],
+    sub_phase: "giving-clue",
+    guesses: {},
+    scores: {},
   },
 };
 

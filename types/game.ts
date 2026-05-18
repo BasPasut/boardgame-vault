@@ -1,12 +1,12 @@
 export type Language = "en" | "th";
 
-export type GameId = "shadows-over-thornwick";
+export type GameId = "shadows-over-thornwick" | "hues-and-cues";
 
 export type Team = "good" | "evil";
 
 export type RoleType = "townsfolk" | "outsider" | "minion" | "demon" | "storyteller";
 
-export type GamePhase = "lobby" | "role-reveal" | "day" | "night" | "ended";
+export type GamePhase = "lobby" | "role-reveal" | "day" | "night" | "playing" | "ended";
 
 export interface Role {
   id: string;
