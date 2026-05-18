@@ -18,6 +18,7 @@ import type { Player } from "@/types/game";
 export interface HnCGameState {
   round: number;
   total_rounds: number;
+  score_to_win: number;
   cue_giver_order: string[];
   target: { x: number; y: number };
   clues: string[];
@@ -41,7 +42,7 @@ interface Props {
   myPlayerId: string | null;
 }
 
-// ---------- Audio icons (inline for standalone component) ----------
+// ---------- Audio icons ----------
 function AudioOnIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -63,7 +64,7 @@ function AudioOffIcon() {
   );
 }
 
-// ---------- Color Grid ----------
+// ---------- Color Grid (30×16) ----------
 function ColorGrid({
   gs,
   players,
@@ -83,92 +84,145 @@ function ColorGrid({
   const myGuess = myPlayerId ? gs.guesses[myPlayerId] : null;
 
   return (
-    <div
-      className="w-full rounded-xl overflow-hidden shadow-2xl"
-      style={{
-        border: "2px solid rgba(212,175,55,0.25)",
-        boxShadow: "0 0 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.3)",
-        aspectRatio: "1",
-      }}
-    >
+    <div className="w-full select-none">
+      {/* Column labels */}
       <div
-        className="grid w-full h-full"
-        style={{
-          gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
-          gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
-        }}
+        className="w-full mb-0.5"
+        style={{ display: "grid", gridTemplateColumns: `16px repeat(${GRID_COLS}, 1fr)` }}
       >
-        {Array.from({ length: GRID_ROWS }, (_, y) =>
-          Array.from({ length: GRID_COLS }, (_, x) => {
-            const color = getColor(x, y);
-            const isTarget = isReveal && gs.target.x === x && gs.target.y === y;
-            const isCueGiverTarget =
-              amICueGiver && gs.sub_phase !== "reveal" && gs.target.x === x && gs.target.y === y;
-            const isMyGuess = !isReveal && myGuess?.x === x && myGuess?.y === y;
-            const guessersHere = isReveal
-              ? players.filter((p) => gs.guesses[p.id]?.x === x && gs.guesses[p.id]?.y === y)
-              : [];
+        <div />
+        {Array.from({ length: GRID_COLS }, (_, x) => (
+          <div
+            key={x}
+            className="text-center font-mono"
+            style={{ fontSize: "6px", color: "rgba(212,175,55,0.4)", lineHeight: "1" }}
+          >
+            {x + 1}
+          </div>
+        ))}
+      </div>
 
-            return (
-              <div
-                key={`${x}-${y}`}
-                onClick={() => canGuess && onGuess(x, y)}
-                className={`relative flex items-center justify-center ${canGuess ? "cursor-pointer active:brightness-75" : ""}`}
-                style={{
-                  backgroundColor: color,
-                  outline:
-                    isTarget
-                      ? "3px solid rgba(255,255,255,0.9)"
-                      : isCueGiverTarget
-                      ? "2px dashed rgba(255,255,255,0.7)"
-                      : undefined,
-                  zIndex: isTarget || isCueGiverTarget ? 1 : undefined,
-                }}
-              >
-                {/* Cue giver sees target location */}
-                {isCueGiverTarget && (
-                  <div className="w-2.5 h-2.5 rounded-full bg-white/80 shadow-md" />
-                )}
-                {/* Target revealed */}
-                {isTarget && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-4 h-4 rounded-full bg-white border-2 border-gray-800 shadow-lg" />
-                  </div>
-                )}
-                {/* My current guess */}
-                {isMyGuess && (
+      {/* Grid with row labels */}
+      <div className="w-full flex gap-0.5">
+        {/* Row labels */}
+        <div className="flex flex-col" style={{ width: "16px", flexShrink: 0 }}>
+          {Array.from({ length: GRID_ROWS }, (_, y) => (
+            <div
+              key={y}
+              className="flex items-center justify-end pr-0.5 font-mono flex-1"
+              style={{ fontSize: "6px", color: "rgba(212,175,55,0.4)", lineHeight: "1" }}
+            >
+              {String.fromCharCode(65 + y)}
+            </div>
+          ))}
+        </div>
+
+        {/* Board */}
+        <div
+          className="flex-1 rounded-lg overflow-hidden shadow-2xl"
+          style={{
+            border: "2px solid rgba(212,175,55,0.35)",
+            boxShadow: "0 0 0 1px rgba(0,0,0,0.5), 0 8px 40px rgba(0,0,0,0.7), 0 0 60px rgba(212,175,55,0.05)",
+            background: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <div
+            className="w-full"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
+              gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
+              aspectRatio: `${GRID_COLS}/${GRID_ROWS}`,
+              gap: "1px",
+              background: "rgba(0,0,0,0.35)",
+            }}
+          >
+            {Array.from({ length: GRID_ROWS }, (_, y) =>
+              Array.from({ length: GRID_COLS }, (_, x) => {
+                const color = getColor(x, y);
+                const isTarget = isReveal && gs.target.x === x && gs.target.y === y;
+                const isCueGiverTarget =
+                  amICueGiver && gs.sub_phase !== "reveal" && gs.target.x === x && gs.target.y === y;
+                const isMyGuess = !isReveal && myGuess?.x === x && myGuess?.y === y;
+                const guessersHere = isReveal
+                  ? players.filter((p) => gs.guesses[p.id]?.x === x && gs.guesses[p.id]?.y === y)
+                  : [];
+
+                return (
                   <div
-                    className="w-3 h-3 rounded-full border-2 border-white shadow-md"
+                    key={`${x}-${y}`}
+                    onClick={() => canGuess && onGuess(x, y)}
+                    className={`relative flex items-center justify-center ${canGuess ? "cursor-pointer" : ""}`}
                     style={{
-                      backgroundColor:
-                        PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length],
+                      backgroundColor: color,
+                      outline: isTarget
+                        ? "2px solid rgba(255,255,255,0.95)"
+                        : isCueGiverTarget
+                        ? "2px dashed rgba(255,255,255,0.8)"
+                        : undefined,
+                      outlineOffset: "-1px",
+                      zIndex: isTarget || isCueGiverTarget ? 1 : undefined,
                     }}
-                  />
-                )}
-                {/* All guesses on reveal */}
-                {isReveal && guessersHere.length > 0 && (
-                  <div className="absolute inset-0 flex flex-wrap items-center justify-center gap-px p-0.5">
-                    {guessersHere.slice(0, 3).map((p) => (
+                  >
+                    {isCueGiverTarget && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/90 shadow-sm" />
+                    )}
+                    {isTarget && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                          className="rounded-full border border-gray-800 shadow-md"
+                          style={{ width: "55%", height: "55%", background: "white" }}
+                        />
+                      </div>
+                    )}
+                    {isMyGuess && (
                       <div
-                        key={p.id}
-                        className="w-2 h-2 rounded-full border border-white shadow-sm flex-shrink-0"
+                        className="rounded-full border border-white/80 shadow-md"
                         style={{
+                          width: "60%",
+                          height: "60%",
                           backgroundColor:
-                            PIN_COLORS[players.findIndex((pl) => pl.id === p.id) % PIN_COLORS.length],
+                            PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length],
                         }}
                       />
-                    ))}
-                    {guessersHere.length > 3 && (
-                      <span className="text-white text-[7px] font-bold leading-none drop-shadow">
-                        +{guessersHere.length - 3}
-                      </span>
+                    )}
+                    {isReveal && guessersHere.length > 0 && (
+                      <div className="absolute inset-0 flex flex-wrap items-center justify-center p-px gap-px">
+                        {guessersHere.slice(0, 2).map((p) => (
+                          <div
+                            key={p.id}
+                            className="rounded-full border border-white/70 shadow-sm"
+                            style={{
+                              width: guessersHere.length === 1 ? "55%" : "40%",
+                              height: guessersHere.length === 1 ? "55%" : "40%",
+                              backgroundColor:
+                                PIN_COLORS[players.findIndex((pl) => pl.id === p.id) % PIN_COLORS.length],
+                            }}
+                          />
+                        ))}
+                        {guessersHere.length > 2 && (
+                          <div
+                            className="rounded-full border border-white/70 flex items-center justify-center shadow-sm"
+                            style={{
+                              width: "40%",
+                              height: "40%",
+                              background: "rgba(0,0,0,0.7)",
+                              fontSize: "5px",
+                              color: "white",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            +{guessersHere.length - 2}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -196,6 +250,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const guessersCount = nonCueGivers.filter((p) => !!gs.guesses[p.id]).length;
   const allGuessed = guessersCount === nonCueGivers.length && nonCueGivers.length > 0;
 
+  // Score bar: highest score relative to target
+  const topScore = Math.max(0, ...players.map((p) => gs.scores[p.id] ?? 0));
+  const scoreToWin = gs.score_to_win ?? 25;
+
   const t = {
     en: {
       round: "Round", of: "of",
@@ -215,14 +273,16 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
       nextRound: "Next Round →",
       endGame: "End Game",
       roundScores: "Round Results",
-      targetWas: "Target was",
-      totalScores: "Total Scores",
+      targetWas: "Target",
+      totalScores: "Scoreboard",
       pts: "pts",
       winner: "Winner!",
       tie: "It's a Tie!",
       playAgain: "Play Again",
       back: "← Home",
-      allGuessedAuto: "Everyone guessed — reveal?",
+      allGuessedAuto: "Everyone guessed!",
+      scoreboard: "Scoreboard",
+      goal: "Goal",
     },
     th: {
       round: "รอบ", of: "จาก",
@@ -242,14 +302,16 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
       nextRound: "รอบถัดไป →",
       endGame: "จบเกม",
       roundScores: "ผลรอบนี้",
-      targetWas: "เป้าหมายคือ",
+      targetWas: "เป้าหมาย",
       totalScores: "คะแนนรวม",
       pts: "คะแนน",
       winner: "ผู้ชนะ!",
       tie: "เสมอกัน!",
       playAgain: "เล่นอีกครั้ง",
       back: "← หน้าแรก",
-      allGuessedAuto: "ทุกคนทายแล้ว — เฉลยได้เลย?",
+      allGuessedAuto: "ทุกคนทายแล้ว!",
+      scoreboard: "คะแนน",
+      goal: "เป้า",
     },
   }[lang];
 
@@ -276,7 +338,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   };
 
   const triggerReveal = async () => {
-    if (!amICueGiver && !isHost && !allGuessed) return;
+    if (!amICueGiver && !isHost) return;
     const roundScores: Record<string, number> = {};
     let cueGiverBonus = 0;
     players.forEach((p) => {
@@ -284,23 +346,31 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
       const guess = gs.guesses[p.id];
       if (!guess) { roundScores[p.id] = 0; return; }
       const d = manhattan(guess, gs.target);
-      const pts = scoreForDistance(d);
-      roundScores[p.id] = pts;
-      if (d <= 2) cueGiverBonus++;
+      roundScores[p.id] = scoreForDistance(d);
+      // Cue giver gets 1pt for each guesser in ring 1 or ring 2 (d≤4)
+      if (d <= 4) cueGiverBonus++;
     });
     if (currentCueGiverId) roundScores[currentCueGiverId] = cueGiverBonus;
+
     const newScores = { ...gs.scores };
     Object.entries(roundScores).forEach(([pid, pts]) => {
       newScores[pid] = (newScores[pid] ?? 0) + pts;
     });
-    await supabase.from("sessions").update({
-      game_state: { ...gs, sub_phase: "reveal", round_scores: roundScores, scores: newScores },
-    }).eq("code", code);
+
+    const newState = { ...gs, sub_phase: "reveal" as const, round_scores: roundScores, scores: newScores };
+    const someoneWon = scoreToWin > 0 && Object.values(newScores).some((s) => s >= scoreToWin);
+
+    if (someoneWon) {
+      await supabase.from("sessions").update({ phase: "ended", game_state: newState }).eq("code", code);
+    } else {
+      await supabase.from("sessions").update({ game_state: newState }).eq("code", code);
+    }
   };
 
   const nextRound = async () => {
     const nextRoundNum = gs.round + 1;
-    if (nextRoundNum > gs.total_rounds) {
+    const roundsExhausted = gs.total_rounds > 0 && nextRoundNum > gs.total_rounds;
+    if (roundsExhausted) {
       await supabase.from("sessions").update({ phase: "ended" }).eq("code", code);
       return;
     }
@@ -317,7 +387,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
     }).eq("code", code);
   };
 
-  // ---------- Shared header bits ----------
+  // ---------- Shared header ----------
   const HeaderRight = () => (
     <div className="flex items-center gap-2">
       <button
@@ -341,8 +411,8 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   // ---------- ENDED ----------
   if (phase === "ended") {
     const sorted = [...players].sort((a, b) => (gs.scores[b.id] ?? 0) - (gs.scores[a.id] ?? 0));
-    const topScore = gs.scores[sorted[0]?.id] ?? 0;
-    const winners = sorted.filter((p) => (gs.scores[p.id] ?? 0) === topScore);
+    const topScoreVal = gs.scores[sorted[0]?.id] ?? 0;
+    const winners = sorted.filter((p) => (gs.scores[p.id] ?? 0) === topScoreVal);
 
     return (
       <div className="min-h-screen flex flex-col" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
@@ -368,31 +438,40 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               {t.totalScores}
             </p>
             <div className="space-y-2">
-              {sorted.map((p, i) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: i === 0 ? "rgba(212,175,55,0.15)" : "rgba(45,27,78,0.4)" }}
-                >
-                  <span className="text-sm w-5 flex-shrink-0" style={{ color: "#5a4a3a" }}>#{i + 1}</span>
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{
-                      background: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length] + "40",
-                      color: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length],
-                    }}
-                  >
-                    {p.name[0].toUpperCase()}
+              {sorted.map((p, i) => {
+                const score = gs.scores[p.id] ?? 0;
+                const pct = scoreToWin > 0 ? Math.min(100, (score / scoreToWin) * 100) : 100;
+                return (
+                  <div key={p.id} className="rounded-xl overflow-hidden" style={{ background: i === 0 ? "rgba(212,175,55,0.1)" : "rgba(45,27,78,0.4)" }}>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <span className="text-sm w-5 flex-shrink-0" style={{ color: "#5a4a3a" }}>#{i + 1}</span>
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        style={{ background: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length] + "40", color: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length] }}
+                      >
+                        {p.name[0].toUpperCase()}
+                      </div>
+                      <span className="flex-1 text-sm truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#a08060" }}>
+                        {p.name}{p.id === myPlayerId ? " ★" : ""}
+                      </span>
+                      <span className="font-bold text-base flex-shrink-0" style={{ color: i === 0 ? "#d4af37" : "#e8d5b0" }}>
+                        {score} {t.pts}
+                      </span>
+                    </div>
+                    {scoreToWin > 0 && (
+                      <div style={{ height: "3px", background: "rgba(0,0,0,0.3)" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: i === 0 ? "#d4af37" : PIN_COLORS[players.indexOf(p) % PIN_COLORS.length], transition: "width 0.6s ease" }} />
+                      </div>
+                    )}
                   </div>
-                  <span className="flex-1 text-sm truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#a08060" }}>
-                    {p.name}{p.id === myPlayerId ? " ★" : ""}
-                  </span>
-                  <span className="font-bold text-base flex-shrink-0" style={{ color: i === 0 ? "#d4af37" : "#e8d5b0" }}>
-                    {gs.scores[p.id] ?? 0} {t.pts}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
+            {scoreToWin > 0 && (
+              <p className="text-center text-xs mt-3 italic" style={{ color: "#5a4a3a" }}>
+                {t.goal}: {scoreToWin} {t.pts}
+              </p>
+            )}
           </div>
 
           <Link href="/" className="btn-gothic-primary w-full py-4 rounded-xl font-bold text-lg text-center no-underline block" style={{ fontFamily: "var(--font-gothic)" }}>
@@ -406,26 +485,44 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   // ---------- PLAYING ----------
   const canGuess = gs.sub_phase === "guessing" && !amICueGiver && !!myPlayerId;
   const myGuess = myPlayerId ? gs.guesses[myPlayerId] : null;
+  const isLastRound = gs.total_rounds > 0 && gs.round >= gs.total_rounds;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#0d0a1a" }}>
       {/* Sticky header */}
       <div className="sticky top-0 z-20" style={{ background: "rgba(13,10,26,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs" style={{ color: "#5a4a3a" }}>Hues & Cues</p>
-            <p className="text-sm font-bold" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
-              {t.round} {gs.round} {t.of} {gs.total_rounds}
-              <span className="ml-2 text-xs font-normal" style={{ color: "#5a4a3a" }}>
-                — {cueGiver?.name} 🎨
-              </span>
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="text-xs truncate" style={{ color: "#5a4a3a" }}>
+              Hues &amp; Cues · {t.round} {gs.round}{gs.total_rounds > 0 ? ` ${t.of} ${gs.total_rounds}` : ""}
+            </p>
+            <p className="text-sm font-bold truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+              {cueGiver?.name} 🎨
             </p>
           </div>
-          <HeaderRight />
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Score progress pill */}
+            {scoreToWin > 0 && (
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ background: "rgba(45,27,78,0.6)", border: "1px solid rgba(212,175,55,0.15)" }}>
+                <span style={{ color: "#5a4a3a" }}>{t.goal}:</span>
+                <span style={{ color: "#d4af37" }}>{topScore}</span>
+                <span style={{ color: "#3a2a1a" }}>/</span>
+                <span style={{ color: "#5a4a3a" }}>{scoreToWin}</span>
+              </div>
+            )}
+            <HeaderRight />
+          </div>
         </div>
+
+        {/* Score progress bar */}
+        {scoreToWin > 0 && (
+          <div style={{ height: "2px", background: "rgba(45,27,78,0.8)" }}>
+            <div style={{ height: "100%", width: `${Math.min(100, (topScore / scoreToWin) * 100)}%`, background: "linear-gradient(to right, #4a3a7a, #d4af37)", transition: "width 0.5s ease" }} />
+          </div>
+        )}
       </div>
 
-      <div className="flex-1 max-w-lg mx-auto px-4 py-4 w-full flex flex-col gap-4">
+      <div className="flex-1 max-w-2xl mx-auto px-3 py-3 w-full flex flex-col gap-3">
 
         {/* Clue chips */}
         {gs.clues.length > 0 && (
@@ -457,26 +554,27 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
           onGuess={placeGuess}
         />
 
-        {/* Player pin legend — always visible */}
-        <div className="flex flex-wrap gap-2">
+        {/* Player pin legend */}
+        <div className="flex flex-wrap gap-1.5">
           {players.map((p) => {
             const pinColor = PIN_COLORS[players.indexOf(p) % PIN_COLORS.length];
             const hasGuessed = !!gs.guesses[p.id];
+            const isCueGiver = p.id === currentCueGiverId;
             return (
               <div
                 key={p.id}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs"
                 style={{
                   background: "rgba(13,10,26,0.7)",
-                  border: `1px solid ${hasGuessed ? pinColor + "80" : "rgba(90,74,58,0.3)"}`,
-                  color: hasGuessed ? "#e8d5b0" : "#5a4a3a",
-                  opacity: p.id === currentCueGiverId ? 0.4 : 1,
+                  border: `1px solid ${hasGuessed && !isCueGiver ? pinColor + "80" : "rgba(90,74,58,0.3)"}`,
+                  color: hasGuessed || isCueGiver ? "#e8d5b0" : "#5a4a3a",
+                  opacity: isCueGiver ? 0.6 : 1,
                 }}
               >
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pinColor }} />
                 {p.name}
-                {p.id === currentCueGiverId && " 🎨"}
-                {hasGuessed && p.id !== currentCueGiverId && " ✓"}
+                {isCueGiver && " 🎨"}
+                {hasGuessed && !isCueGiver && " ✓"}
               </div>
             );
           })}
@@ -486,10 +584,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* GIVING CLUE — cue giver */}
         {gs.sub_phase === "giving-clue" && amICueGiver && (
-          <div className="gothic-card rounded-2xl p-5">
-            <div className="flex items-center gap-3 mb-4">
+          <div className="gothic-card rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
               <div
-                className="w-12 h-12 rounded-xl border-2 shadow-lg flex-shrink-0"
+                className="w-10 h-10 rounded-xl border-2 shadow-lg flex-shrink-0"
                 style={{
                   backgroundColor: getColor(gs.target.x, gs.target.y),
                   borderColor: "rgba(212,175,55,0.6)",
@@ -500,7 +598,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                   {t.targetColor}
                 </p>
-                <p className="text-xs" style={{ color: "#5a4a3a" }}>{t.youAreCueGiver}</p>
+                <p className="text-xs" style={{ color: "#5a4a3a" }}>
+                  Col {gs.target.x + 1} · Row {String.fromCharCode(65 + gs.target.y)}
+                </p>
               </div>
             </div>
             <p className="text-xs mb-2" style={{ color: "#7a6a5a" }}>{t.giveClue}</p>
@@ -528,7 +628,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* GIVING CLUE — waiting players */}
         {gs.sub_phase === "giving-clue" && !amICueGiver && (
-          <div className="gothic-card rounded-2xl p-5 text-center">
+          <div className="gothic-card rounded-2xl p-4 text-center">
             <div className="text-3xl mb-2 animate-pulse">🎨</div>
             <p className="text-sm" style={{ color: "#a08060" }}>
               {t.cueGiverIs}: <span style={{ color: "#e8d5b0" }}>{cueGiver?.name}</span>
@@ -543,7 +643,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div
-                  className="w-8 h-8 rounded-lg border flex-shrink-0"
+                  className="w-7 h-7 rounded-lg border flex-shrink-0"
                   style={{ backgroundColor: getColor(gs.target.x, gs.target.y), borderColor: "rgba(212,175,55,0.4)" }}
                 />
                 <span className="text-xs" style={{ color: "#7a6a5a" }}>
@@ -588,7 +688,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
         {gs.sub_phase === "guessing" && !amICueGiver && (
           <div className="gothic-card rounded-2xl p-4 text-center">
             <p className="text-sm mb-1" style={{ color: "#7a6a5a" }}>
-              {myGuess ? "✓" : "○"}{" "}
+              {myGuess ? "✓ " : "○ "}
               <span style={{ color: myGuess ? "#5a9a5a" : "#e8d5b0" }}>
                 {myGuess ? t.canChange : t.tapToGuess}
               </span>
@@ -596,7 +696,6 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             <p className="text-xs" style={{ color: "#5a4a3a" }}>
               {guessersCount}/{nonCueGivers.length} {t.guessed}
             </p>
-            {/* My pin color indicator */}
             {myPlayerId && (
               <div className="flex items-center justify-center gap-2 mt-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: myPinColor }} />
@@ -608,36 +707,31 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* REVEAL */}
         {gs.sub_phase === "reveal" && gs.round_scores && (
-          <div className="gothic-card rounded-2xl p-5 space-y-4">
-            <p className="text-xs tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-              {t.roundScores}
-            </p>
-
-            {/* Target swatch */}
-            <div
-              className="flex items-center gap-3 p-3 rounded-xl"
-              style={{ background: "rgba(45,27,78,0.4)" }}
-            >
-              <div
-                className="w-12 h-12 rounded-xl border-2 flex-shrink-0 shadow-lg"
-                style={{
-                  backgroundColor: getColor(gs.target.x, gs.target.y),
-                  borderColor: "rgba(212,175,55,0.5)",
-                  boxShadow: `0 0 16px ${getColor(gs.target.x, gs.target.y)}50`,
-                }}
-              />
-              <div>
-                <p className="text-xs" style={{ color: "#5a4a3a" }}>{t.targetWas}</p>
-                <p className="text-sm font-medium" style={{ color: "#e8d5b0" }}>
-                  ({gs.target.x + 1}, {gs.target.y + 1})
-                </p>
+          <div className="gothic-card rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                {t.roundScores}
+              </p>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-lg border-2 flex-shrink-0 shadow-md"
+                  style={{
+                    backgroundColor: getColor(gs.target.x, gs.target.y),
+                    borderColor: "rgba(212,175,55,0.5)",
+                    boxShadow: `0 0 12px ${getColor(gs.target.x, gs.target.y)}50`,
+                  }}
+                />
+                <div className="text-xs" style={{ color: "#5a4a3a" }}>
+                  <span style={{ color: "#7a6a5a" }}>{t.targetWas}</span>
+                  {" "}{gs.target.x + 1},{String.fromCharCode(65 + gs.target.y)}
+                </div>
               </div>
             </div>
 
-            {/* Per-player scores */}
             <div className="space-y-1.5">
               {players.map((p) => {
                 const roundPts = gs.round_scores?.[p.id] ?? 0;
+                const totalPts = gs.scores[p.id] ?? 0;
                 const guess = gs.guesses[p.id];
                 const dist = guess ? manhattan(guess, gs.target) : null;
                 const isCueGiver = p.id === currentCueGiverId;
@@ -645,7 +739,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 return (
                   <div
                     key={p.id}
-                    className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl"
+                    className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl"
                     style={{ background: "rgba(13,10,26,0.6)" }}
                   >
                     <div
@@ -658,29 +752,33 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                       {p.name}{isCueGiver ? " 🎨" : ""}
                     </span>
                     {!isCueGiver && dist !== null && (
-                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(45,27,78,0.6)", color: "#7a6a5a" }}>
+                      <span className="text-xs px-1 py-0.5 rounded" style={{ background: "rgba(45,27,78,0.6)", color: "#7a6a5a" }}>
                         d={dist}
                       </span>
                     )}
+                    <span className="text-xs flex-shrink-0" style={{ color: "#5a4a3a" }}>
+                      {totalPts}
+                    </span>
                     <span
-                      className="font-bold w-14 text-right flex-shrink-0"
+                      className="font-bold w-12 text-right flex-shrink-0"
                       style={{ color: roundPts > 0 ? "#d4af37" : "#5a4a3a" }}
                     >
-                      +{roundPts} {t.pts}
+                      +{roundPts}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            {/* Next round */}
-            <button
-              onClick={nextRound}
-              className="btn-gothic-primary w-full py-3 rounded-xl font-bold"
-              style={{ fontFamily: "var(--font-gothic)" }}
-            >
-              {gs.round >= gs.total_rounds ? t.endGame : t.nextRound}
-            </button>
+            {(amICueGiver || isHost) && (
+              <button
+                onClick={nextRound}
+                className="btn-gothic-primary w-full py-3 rounded-xl font-bold"
+                style={{ fontFamily: "var(--font-gothic)" }}
+              >
+                {isLastRound ? t.endGame : t.nextRound}
+              </button>
+            )}
           </div>
         )}
       </div>

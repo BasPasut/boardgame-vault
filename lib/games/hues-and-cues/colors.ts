@@ -1,21 +1,31 @@
-export const GRID_COLS = 10;
-export const GRID_ROWS = 10;
+export const GRID_COLS = 30;
+export const GRID_ROWS = 16;
 
-// Hue for each column — full spectrum + warm/cool balance
-const HUES = [0, 25, 55, 85, 135, 170, 205, 245, 285, 330];
+// 30 hues spanning the full visible spectrum
+const HUES = [
+   0,  12,  24,  36,  48,  60,  72,  84,  96, 108,
+  120, 132, 144, 156, 168, 180, 192, 204, 216, 228,
+  240, 252, 264, 276, 288, 300, 312, 324, 336, 348,
+];
 
-// Lightness + saturation per row (top = light, bottom = dark)
+// 16 rows: top = very light pastel → bottom = very dark saturated
 const ROW_STYLES = [
-  { l: 93, s: 60 },
-  { l: 83, s: 72 },
-  { l: 73, s: 82 },
-  { l: 63, s: 89 },
+  { l: 95, s: 28 },
+  { l: 89, s: 48 },
+  { l: 82, s: 65 },
+  { l: 75, s: 77 },
+  { l: 67, s: 85 },
+  { l: 60, s: 90 },
   { l: 53, s: 93 },
-  { l: 44, s: 90 },
-  { l: 36, s: 85 },
-  { l: 28, s: 78 },
-  { l: 20, s: 68 },
-  { l: 13, s: 55 },
+  { l: 47, s: 93 },
+  { l: 41, s: 91 },
+  { l: 35, s: 87 },
+  { l: 29, s: 81 },
+  { l: 23, s: 73 },
+  { l: 17, s: 63 },
+  { l: 12, s: 51 },
+  { l: 7,  s: 38 },
+  { l: 3,  s: 24 },
 ];
 
 export function getColor(x: number, y: number): string {
@@ -31,7 +41,7 @@ export function manhattan(
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-// d=0: 3pts  d=1-2: 2pts  d=3-4: 1pt  d>4: 0pts
+// d=0: 3pts (bullseye)  d=1-2: 2pts (ring 1)  d=3-4: 1pt (ring 2)  d>4: 0pts
 export function scoreForDistance(d: number): number {
   if (d === 0) return 3;
   if (d <= 2) return 2;

@@ -12,6 +12,7 @@ import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/s
 import { supabase } from "@/lib/supabase";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
 import { HnCPlaying, type HnCGameState } from "./HnCPlaying";
+import { GRID_COLS, GRID_ROWS } from "@/lib/games/hues-and-cues/colors";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
@@ -364,6 +365,7 @@ function SessionRoom() {
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showMyRole, setShowMyRole] = useState(false);
+  const [hncScoreToWin, setHncScoreToWin] = useState(25);
 
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
@@ -604,9 +606,10 @@ function SessionRoom() {
     players.forEach((p) => { initialScores[p.id] = 0; });
     const state: HnCGameState = {
       round: 1,
-      total_rounds: players.length,
+      total_rounds: 0,
+      score_to_win: hncScoreToWin,
       cue_giver_order: shuffled,
-      target: { x: Math.floor(Math.random() * 10), y: Math.floor(Math.random() * 10) },
+      target: { x: Math.floor(Math.random() * GRID_COLS), y: Math.floor(Math.random() * GRID_ROWS) },
       clues: [],
       sub_phase: "giving-clue",
       guesses: {},
@@ -812,6 +815,30 @@ function SessionRoom() {
 
           {isHost && dbSession?.game_id === "hues-and-cues" && (
             <div className="space-y-3">
+              <div className="gothic-card rounded-2xl p-5">
+                <div className="text-xs tracking-widest uppercase mb-3" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                  {lang === "en" ? "Score to Win" : "คะแนนเพื่อชนะ"}
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {[10, 15, 25, 30].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setHncScoreToWin(s)}
+                      className="px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                      style={{
+                        background: hncScoreToWin === s ? "rgba(212,175,55,0.2)" : "rgba(45,27,78,0.4)",
+                        border: `1px solid ${hncScoreToWin === s ? "rgba(212,175,55,0.6)" : "rgba(212,175,55,0.15)"}`,
+                        color: hncScoreToWin === s ? "#d4af37" : "#7a6a5a",
+                      }}
+                    >
+                      {s} pts
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs mt-2" style={{ color: "#5a4a3a" }}>
+                  {lang === "en" ? "First player to reach this score wins" : "ผู้เล่นที่ได้คะแนนถึงเป้าหมายก่อนชนะ"}
+                </p>
+              </div>
               <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
                 + Add Demo Players (for testing)
               </button>

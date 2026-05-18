@@ -26,6 +26,7 @@ const INITIAL_GAME_STATE: Record<string, object> = {
   "hues-and-cues": {
     round: 0,
     total_rounds: 0,
+    score_to_win: 25,
     cue_giver_order: [],
     target: { x: 0, y: 0 },
     clues: [],
@@ -53,7 +54,7 @@ function CreateSessionForm() {
       title: "Create Session",
       subtitle: "Set up your game room",
       selectGame: "Select Game",
-      yourName: "Your Name (Storyteller)",
+      yourName: selectedGame === "hues-and-cues" ? "Your Name (Host)" : "Your Name (Storyteller)",
       namePlaceholder: "Enter your name...",
       create: "Create Room",
       creating: "Creating...",
@@ -65,7 +66,7 @@ function CreateSessionForm() {
       title: "สร้างห้อง",
       subtitle: "ตั้งค่าห้องเกมของคุณ",
       selectGame: "เลือกเกม",
-      yourName: "ชื่อของคุณ (Storyteller)",
+      yourName: selectedGame === "hues-and-cues" ? "ชื่อของคุณ (Host)" : "ชื่อของคุณ (Storyteller)",
       namePlaceholder: "ใส่ชื่อของคุณ...",
       create: "สร้างห้อง",
       creating: "กำลังสร้าง...",
@@ -107,9 +108,6 @@ function CreateSessionForm() {
       setLoading(false);
       return;
     }
-
-    // Background cleanup — delete sessions older than 24h
-    supabase.from("sessions").delete().lt("created_at", new Date(Date.now() - 86400000).toISOString()).then(() => {});
 
     localStorage.setItem(`bgv_player_${code}`, playerId);
     router.push(`/session/${code}?host=true`);

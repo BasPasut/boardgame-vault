@@ -1,99 +1,99 @@
 # BoardgameVault
 
-Turn your physical board games into online sessions. Create a room, share the code, and play with friends anywhere — no expensive physical sets required.
+**BoardgameVault** brings physical board games online — create a session, share a link, and play with friends anywhere. No expensive boxes required.
 
 🌐 **Live:** [boardgame-vault.vercel.app](https://boardgame-vault.vercel.app)
 
----
-
 ## Games
 
-| Game | Status | Players |
-|------|--------|---------|
-| Shadows Over Thornwick | ✅ Available | 5–15 |
-| Werewolf | 🔜 Coming Soon | 6–20 |
-| Secret Hitler | 🔜 Coming Soon | 5–10 |
+| Game | Players | Status |
+|------|---------|--------|
+| Shadows Over Thornwick | 5–15 | ✅ Available |
+| Hues & Cues | 3–10 | ✅ Available |
+| Werewolf | 6–20 | 🔜 Coming Soon |
+| Secret Hitler | 5–10 | 🔜 Coming Soon |
 
----
+## Tech Stack
 
-## How to Play
+- **Framework**: Next.js (App Router) + TypeScript
+- **Styling**: Tailwind CSS v4 — dark gothic theme
+- **Database & Realtime**: Supabase (Postgres + Realtime subscriptions)
+- **Hosting**: Vercel
+- **i18n**: Manual `{en, th}` objects throughout (English + Thai)
 
-1. **Create a room** — pick a game, enter your name as Storyteller, get a 6-digit code
-2. **Share the code** — friends open the site and type the code to join
-3. **Start the game** — Storyteller assigns roles, runs day/night phases
-4. All game state syncs in real-time across every device
-
----
-
-## Stack
-
-| Layer | Tech |
-|---|---|
-| Framework | Next.js 16 (App Router) + TypeScript |
-| Styling | Tailwind CSS v4 — gothic dark theme |
-| Real-time | Supabase Postgres + Realtime subscriptions |
-| i18n | English + Thai (manual `{en, th}` toggle) |
-| Fonts | Cinzel (headings) + Inter (body) |
-| Deploy | Vercel |
-
----
-
-## Project Structure
+## Architecture
 
 ```
 app/
-  page.tsx                  # Landing page
+  page.tsx                    # Landing page with game cards
   session/
-    create/page.tsx         # Create room flow
-    [code]/page.tsx         # Live game session (real-time)
+    create/page.tsx           # Create a new game session
+    [code]/
+      page.tsx                # Session room (lobby → game phases)
+      HnCPlaying.tsx          # Hues & Cues game component
+  guide/
+    [gameId]/page.tsx         # How-to-play guide per game
 
 lib/
-  supabase.ts               # Supabase client
-  games/
-    shadows-over-thornwick/ # Role definitions, scripts, role-count table
+  supabase.ts                 # Supabase client
+  hooks/
+    useAmbientAudio.ts        # Ambient audio with crossfade
   utils/
-    session.ts              # Code + player ID generators
+    lang.ts                   # Language persistence
+    session.ts                # Code + player ID generation
+  games/
+    shadows-over-thornwick/   # SoT roles, scripts, logic
+    hues-and-cues/
+      colors.ts               # 30×16 grid color math + scoring
 
-types/
-  game.ts                   # Shared TypeScript types
-
-public/images/
-  platform/                 # Landing, vault door, create session backgrounds
-  games/shadows-over-thornwick/
-    roles/                  # 22 role card images
+public/
+  audio/                      # ambient-lobby.mp3, ambient-day.mp3, ambient-night.mp3
+  images/
+    games/                    # Per-game cover art
+    platform/                 # Background images
 ```
 
----
+## Database Schema
 
-## Database Schema (Supabase)
+### `sessions`
+| Column | Type | Description |
+|--------|------|-------------|
+| `code` | text (PK) | 6-char room code |
+| `game_id` | text | `shadows-over-thornwick` or `hues-and-cues` |
+| `phase` | text | `lobby` → game phases → `ended` |
+| `game_state` | jsonb | Game-specific state object |
+| `created_at` | timestamptz | Auto-cleanup after 24h |
 
-```sql
--- One row per active game room
-sessions (
-  code        varchar(6)  -- room code, e.g. "A3K9PX"
-  game_id     text        -- e.g. "shadows-over-thornwick"
-  phase       text        -- lobby | role-reveal | day | night | ended
-  game_state  jsonb       -- all game-specific state (roles, day, night index…)
-  created_at  timestamptz
-)
+### `players`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | text (PK) | UUID |
+| `session_code` | text (FK) | References sessions |
+| `name` | text | Display name |
+| `player_state` | jsonb | `{ is_alive, is_storyteller }` |
 
--- One row per player in a room
-players (
-  id           text
-  session_code varchar(6)
-  name         text
-  player_state jsonb       -- { is_alive, is_storyteller } — extensible per game
-  joined_at    timestamptz
-)
-```
+### `messages`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid (PK) | Auto |
+| `session_code` | text | Room |
+| `from_id` | text | Sender player ID |
+| `to_id` | text | Recipient player ID |
+| `body` | text | Message content |
 
-`game_state` and `player_state` are JSONB so adding a new game requires no schema changes — each game defines its own state shape in code.
+## Games in Detail
 
----
+### Shadows Over Thornwick
+Social deduction. One Storyteller runs the game. Players are divided into Good (Townsfolk, Outsiders) and Evil (Minions, Demon). The village must execute the Demon before it kills everyone.
 
-## Local Development
+**Phases:** `lobby → role-reveal → day ⟷ night → ended`
 
-Requires **Node.js v20+**.
+### Hues & Cues
+Color-guessing game on a 30×16 grid. Each round one player (Cue Giver) sees a target color and describes it in 1–2 words. Everyone else places a pin on their best guess.
+
+**Scoring:** Bullseye = 3pts · Ring 1 (d≤2) = 2pts · Ring 2 (d≤4) = 1pt · Cue Giver earns 1pt per guesser in Ring 1 or 2. First to the score goal wins.
+
+## Development
 
 ```bash
 npm install
@@ -101,19 +101,14 @@ npm run dev
 ```
 
 Create `.env.local`:
-
 ```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+## Design Language
 
----
-
-## Deploying
-
-1. Push to GitHub
-2. Import repo on [Vercel](https://vercel.com)
-3. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in Vercel environment variables
-4. Deploy — zero config needed for Next.js
+- **Colors**: Deep navy `#0d0a1a` · Gold `#d4af37` · Parchment `#e8d5b0`
+- **Typography**: Gothic serif for headings, monospace for codes
+- **Motif**: Gothic grimoire — vault doors, candlelight, fog, runes
+- **Audio**: Crossfading ambient tracks per game phase (lobby / day / night)

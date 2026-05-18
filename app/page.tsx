@@ -27,7 +27,7 @@ const GAMES = [
       th: "อธิบายสีด้วยคำเดียว เพื่อนจะหาสีที่ถูกต้องได้มั้ย?",
     },
     players: "3–10",
-    image: null,
+    image: "/images/games/hues-and-cues/cover.png",
     available: true,
     theme: "from-pink-900 via-purple-900 to-indigo-900",
     badge: "bg-pink-900/60 text-pink-200",
@@ -206,7 +206,7 @@ export default function HomePage() {
 function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th"; t: Record<string, string> }) {
   const gameName = game.name[lang];
   return (
-    <div className={`gothic-card rounded-2xl overflow-hidden group ${!game.available ? "opacity-60" : ""}`}>
+    <div className={`gothic-card rounded-2xl overflow-hidden group flex flex-col ${!game.available ? "opacity-60" : ""}`}>
       <div className={`relative h-48 bg-gradient-to-br ${game.theme} flex items-center justify-center overflow-hidden`}>
         {game.image ? (
           <Image src={game.image} alt={gameName} fill className="object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
@@ -221,24 +221,22 @@ function GameCard({ game, lang, t }: { game: typeof GAMES[0]; lang: "en" | "th";
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-5 flex flex-col flex-1">
         <h3 className="text-lg font-bold mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
           {gameName}
         </h3>
-        <p className="text-sm mb-4 leading-relaxed" style={{ color: "#7a6a5a" }}>
+        <p className="text-sm leading-relaxed flex-1 mb-4" style={{ color: "#7a6a5a" }}>
           {game.description[lang]}
         </p>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mt-auto">
           <span className="text-xs" style={{ color: "#5a4a3a" }}>
             {game.players} {t.players}
           </span>
           {game.available ? (
             <div className="flex items-center gap-2">
-              {game.id === "shadows-over-thornwick" && (
-                <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline flex items-center justify-center" title={lang === "en" ? "How to Play" : "วิธีเล่น"}>
-                  <GrimoireIcon />
-                </Link>
-              )}
+              <Link href={`/guide/${game.id}`} className="btn-gothic-secondary px-3 py-2 rounded-lg text-xs font-medium no-underline flex items-center justify-center" title={lang === "en" ? "How to Play" : "วิธีเล่น"}>
+                <GrimoireIcon />
+              </Link>
               <Link href={`/session/create?game=${game.id}`} className="btn-gothic-primary px-4 py-2 rounded-lg text-sm font-medium no-underline">
                 {t.playNow} →
               </Link>
