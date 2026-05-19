@@ -11,6 +11,7 @@ import { Suspense } from "react";
 const GAMES = [
   { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" }, players: "5–15", available: true },
   { id: "hues-and-cues", name: { en: "Hues & Cues", th: "Hues & Cues" }, players: "3–10", available: true },
+  { id: "betrayal-at-house-on-the-hill", name: { en: "Betrayal at House on the Hill", th: "Betrayal at House on the Hill" }, players: "3–6", available: true },
   { id: "werewolf", name: { en: "Werewolf", th: "หมาป่า" }, players: "6–20", available: false },
   { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
 ];
@@ -33,6 +34,29 @@ const INITIAL_GAME_STATE: Record<string, object> = {
     sub_phase: "giving-clue",
     guesses: {},
     scores: {},
+  },
+  "betrayal-at-house-on-the-hill": {
+    phase: "explore",
+    haunt_number: null,
+    traitor_id: null,
+    winner: null,
+    placed_tiles: [],
+    remaining_tiles: { 0: [], 1: [], 2: [] },
+    item_deck: [],
+    omen_deck: [],
+    event_deck: [],
+    item_discard: [],
+    omen_discard: [],
+    event_discard: [],
+    omen_count: 0,
+    turn_order: [],
+    current_turn_index: 0,
+    turn_phase: "move",
+    moves_used: 0,
+    player_states: {},
+    event_log: [],
+    haunt_objectives: null,
+    pending_card: null,
   },
 };
 

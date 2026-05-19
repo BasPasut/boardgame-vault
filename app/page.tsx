@@ -33,6 +33,19 @@ const GAMES = [
     badge: "bg-pink-900/60 text-pink-200",
   },
   {
+    id: "betrayal-at-house-on-the-hill",
+    name: { en: "Betrayal at House on the Hill", th: "Betrayal at House on the Hill" },
+    description: {
+      en: "Explore a haunted mansion room by room — until one of you becomes the traitor.",
+      th: "สำรวจคฤหาสน์ผีสิงทีละห้อง จนกว่าคนหนึ่งในกลุ่มจะกลายเป็นผู้ทรยศ",
+    },
+    players: "3–6",
+    image: "/images/games/betrayal/cover.png",
+    available: true,
+    theme: "from-stone-950 to-red-950",
+    badge: "bg-red-900/60 text-red-200",
+  },
+  {
     id: "werewolf",
     name: { en: "Werewolf", th: "หมาป่า" },
     description: {

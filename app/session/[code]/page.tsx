@@ -12,7 +12,12 @@ import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/s
 import { supabase } from "@/lib/supabase";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
 import { HnCPlaying, type HnCGameState } from "./HnCPlaying";
+import BetrayalPlaying from "./BetrayalPlaying";
 import { GRID_COLS, GRID_ROWS } from "@/lib/games/hues-and-cues/colors";
+import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
+import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, shuffle } from "@/lib/games/betrayal/data/cards";
+import { buildStartingTiles } from "@/lib/games/betrayal/logic/mapEngine";
+import { buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { Suspense } from "react";
 
@@ -367,6 +372,13 @@ function SessionRoom() {
   const [showMyRole, setShowMyRole] = useState(false);
   const [hncScoreToWin, setHncScoreToWin] = useState(25);
 
+  // Betrayal character selections (stored in game_state.character_selections)
+  const betrayalCharSelections: Record<string, string> =
+    dbSession?.game_id === "betrayal-at-house-on-the-hill"
+      ? ((dbSession.game_state as unknown as Record<string, unknown>)?.character_selections as Record<string, string> ?? {})
+      : {};
+  const myBetrayalCharId = myPlayerId ? betrayalCharSelections[myPlayerId] ?? null : null;
+
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
   const isHost = myPlayer?.isStoryteller ?? isHostParam;
@@ -389,16 +401,20 @@ function SessionRoom() {
       )
     : [];
 
-  // Only SoT has ambient audio — add game IDs here when they get audio
-  const GAMES_WITH_AUDIO = ["shadows-over-thornwick"];
+  // Per-game audio source — BetrayalPlaying handles its own in-game tracks,
+  // so page.tsx only plays Betrayal audio during the lobby phase.
+  const GAMES_WITH_AUDIO = ["shadows-over-thornwick", "betrayal-at-house-on-the-hill"];
   const hasAudio = GAMES_WITH_AUDIO.includes(dbSession?.game_id ?? "shadows-over-thornwick");
-  const audioSrc = hasAudio
-    ? phase === "night"
-      ? "/audio/ambient-night.mp3"
-      : phase === "day"
-      ? "/audio/ambient-day.mp3"
-      : "/audio/ambient-lobby.mp3"
-    : null;
+  const audioSrc = (() => {
+    if (!hasAudio) return null;
+    if (dbSession?.game_id === "betrayal-at-house-on-the-hill") {
+      // Only play lobby track here; exploring/haunt handled inside BetrayalPlaying
+      return phase === "lobby" ? "/audio/betrayal/lobby.mp3" : null;
+    }
+    if (phase === "night") return "/audio/ambient-night.mp3";
+    if (phase === "day")   return "/audio/ambient-day.mp3";
+    return "/audio/ambient-lobby.mp3";
+  })();
   const { muted, toggleMute } = useAmbientAudio(audioSrc);
 
   const assignedRoleIds = new Set(Object.values(roleAssignments));
@@ -425,6 +441,10 @@ function SessionRoom() {
     "hues-and-cues": {
       en: { lobby: "Color Room Ready", lobbySubtitle: "Share the code with your friends to join", hostLabel: "Host", waitingForHost: "Waiting for the Host to start...", loadingText: "Loading room..." },
       th: { lobby: "ห้องสีพร้อมแล้ว", lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม", hostLabel: "Host", waitingForHost: "รอ Host เริ่มเกม...", loadingText: "กำลังโหลดห้อง..." },
+    },
+    "betrayal-at-house-on-the-hill": {
+      en: { lobby: "The Mansion Awaits", lobbySubtitle: "Choose your character and enter the house", hostLabel: "Host", waitingForHost: "Waiting for the Host to start...", loadingText: "Entering the mansion..." },
+      th: { lobby: "คฤหาสน์รอคอย", lobbySubtitle: "เลือกตัวละครและเข้าสู่คฤหาสน์", hostLabel: "Host", waitingForHost: "รอ Host เริ่มเกม...", loadingText: "กำลังเข้าสู่คฤหาสน์..." },
     },
   };
   const gameId = dbSession?.game_id ?? "shadows-over-thornwick";
@@ -639,6 +659,77 @@ function SessionRoom() {
     await supabase.from("sessions").update({ phase: "playing", game_state: state }).eq("code", code);
   };
 
+  const handleSelectBetrayalCharacter = async (charId: string) => {
+    if (!myPlayerId || !dbSession) return;
+    const current = dbSession.game_state as unknown as Record<string, unknown>;
+    const character_selections = { ...(current.character_selections as Record<string, string> ?? {}), [myPlayerId]: charId };
+    await supabase.from("sessions").update({
+      game_state: { ...current, character_selections },
+    }).eq("code", code);
+  };
+
+  const handleStartBetrayal = async () => {
+    if (!dbSession) return;
+    const nonST = players.filter(p => !p.isStoryteller);
+    if (nonST.length < 3) return;
+
+    const itemDeck = shuffle(ITEM_CARDS.map(c => c.id));
+    const omenDeck = shuffle(OMEN_CARDS.map(c => c.id));
+    const eventDeck = shuffle(EVENT_CARDS.map(c => c.id));
+    const startingTiles = buildStartingTiles();
+    const pools = buildTilePools();
+
+    const turnOrder = [...nonST.map(p => p.id)].sort(() => Math.random() - 0.5);
+
+    // Assign characters — respect player selections, fill gaps with random
+    const usedCharIds = new Set<string>();
+    const playerStates: Record<string, object> = {};
+    nonST.forEach(p => {
+      let charId = betrayalCharSelections[p.id];
+      if (!charId || usedCharIds.has(charId)) {
+        const available = CHARACTERS.filter(c => !usedCharIds.has(c.id));
+        charId = available.length > 0 ? available[Math.floor(Math.random() * available.length)].id : CHARACTERS[0].id;
+      }
+      usedCharIds.add(charId);
+      const char = getCharacter(charId) ?? CHARACTERS[0];
+      playerStates[p.id] = {
+        character_id: char.id,
+        floor: 1, x: 0, y: 0,
+        speed: char.speed, might: char.might,
+        sanity: char.sanity, knowledge: char.knowledge,
+        items: [],
+        is_alive: true,
+      };
+    });
+
+    await supabase.from("sessions").update({
+      phase: "playing",
+      game_state: {
+        phase: "explore",
+        haunt_number: null,
+        traitor_id: null,
+        winner: null,
+        placed_tiles: startingTiles,
+        remaining_tiles: { 0: shuffle(pools[0]), 1: shuffle(pools[1]), 2: shuffle(pools[2]) },
+        item_deck: itemDeck,
+        omen_deck: omenDeck,
+        event_deck: eventDeck,
+        item_discard: [],
+        omen_discard: [],
+        event_discard: [],
+        omen_count: 0,
+        turn_order: turnOrder,
+        current_turn_index: 0,
+        turn_phase: "move",
+        moves_used: 0,
+        player_states: playerStates,
+        event_log: [],
+        haunt_objectives: null,
+        pending_card: null,
+      },
+    }).eq("code", code);
+  };
+
   const handleRevealRole = () => {
     if (!myPlayerId) return;
     const bluffRoleId = gs?.bluff_assignments?.[myPlayerId];
@@ -730,6 +821,19 @@ function SessionRoom() {
           <Link href="/" className="btn-gothic-primary px-6 py-3 rounded-xl font-semibold no-underline">{t.back}</Link>
         </div>
       </div>
+    );
+  }
+
+  // ---------- BETRAYAL PLAYING / ENDED ----------
+  if (dbSession?.game_id === "betrayal-at-house-on-the-hill" && (phase === "playing" || phase === "ended")) {
+    return (
+      <BetrayalPlaying
+        code={code}
+        dbSession={dbSession as unknown as Parameters<typeof BetrayalPlaying>[0]["dbSession"]}
+        players={players}
+        myPlayerId={myPlayerId}
+        isHost={isHost}
+      />
     );
   }
 
@@ -834,6 +938,113 @@ function SessionRoom() {
             </div>
           </div>
 
+          {/* ─── BETRAYAL CHARACTER SELECTION ─── */}
+          {dbSession?.game_id === "betrayal-at-house-on-the-hill" && joined && (
+            <div className="gothic-card rounded-2xl p-6 mb-6">
+              <div className="text-xs tracking-widest uppercase mb-4" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                {lang === "en" ? "Choose Your Character" : "เลือกตัวละคร"}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {CHARACTERS.map(char => {
+                  const selectedBy = Object.entries(betrayalCharSelections).find(([, cid]) => cid === char.id)?.[0];
+                  const isSelectedByMe = myBetrayalCharId === char.id;
+                  const isSelectedByOther = selectedBy && selectedBy !== myPlayerId;
+                  const otherName = isSelectedByOther ? players.find(p => p.id === selectedBy)?.name ?? "?" : null;
+                  return (
+                    <button
+                      key={char.id}
+                      onClick={() => !isSelectedByOther && handleSelectBetrayalCharacter(char.id)}
+                      disabled={!!isSelectedByOther}
+                      className="relative flex flex-col rounded-xl p-3 text-left transition-all"
+                      style={{
+                        background: isSelectedByMe
+                          ? "rgba(212,175,55,0.18)"
+                          : isSelectedByOther
+                          ? "rgba(90,74,58,0.15)"
+                          : "rgba(45,27,78,0.4)",
+                        border: `1px solid ${isSelectedByMe ? "rgba(212,175,55,0.7)" : isSelectedByOther ? "rgba(90,74,58,0.3)" : "rgba(212,175,55,0.15)"}`,
+                        opacity: isSelectedByOther ? 0.5 : 1,
+                        cursor: isSelectedByOther ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {/* Character image placeholder */}
+                      <div className="w-full aspect-square rounded-lg mb-2 overflow-hidden flex items-center justify-center"
+                        style={{ background: "rgba(13,10,26,0.6)" }}>
+                        <span className="text-3xl">
+                          {char.id === "father-karras" ? "✝️" :
+                           char.id === "professor-ashwood" ? "📚" :
+                           char.id === "lady-blackwood" ? "🌹" :
+                           char.id === "sergeant-cole" ? "🎖️" :
+                           char.id === "mrs-holloway" ? "🗝️" : "🔮"}
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold leading-tight mb-1" style={{ color: isSelectedByMe ? "#d4af37" : "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                        {char.name}
+                      </div>
+                      <div className="text-xs leading-tight" style={{ color: "#7a6a5a" }}>
+                        SPD {char.speed} · MGT {char.might}
+                      </div>
+                      <div className="text-xs leading-tight" style={{ color: "#7a6a5a" }}>
+                        SAN {char.sanity} · KNW {char.knowledge}
+                      </div>
+                      {isSelectedByMe && (
+                        <div className="absolute top-1.5 right-1.5 text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(212,175,55,0.25)", color: "#d4af37" }}>✓</div>
+                      )}
+                      {isSelectedByOther && (
+                        <div className="absolute top-1.5 right-1.5 text-xs px-1.5 py-0.5 rounded-full truncate max-w-[70%]" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
+                          {otherName}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {myBetrayalCharId && (
+                <p className="text-xs mt-3 text-center" style={{ color: "#5a9a5a" }}>
+                  {lang === "en"
+                    ? `You chose ${CHARACTERS.find(c => c.id === myBetrayalCharId)?.name} — waiting for host to start`
+                    : `คุณเลือก ${CHARACTERS.find(c => c.id === myBetrayalCharId)?.name} — รอ Host เริ่มเกม`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ─── BETRAYAL HOST START ─── */}
+          {isHost && dbSession?.game_id === "betrayal-at-house-on-the-hill" && (
+            <div className="space-y-3">
+              <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
+                + Add Demo Players (for testing)
+              </button>
+              <div className="gothic-card rounded-xl p-4">
+                <div className="text-xs tracking-widest uppercase mb-2" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                  {lang === "en" ? "Character Selections" : "การเลือกตัวละคร"}
+                </div>
+                {players.filter(p => !p.isStoryteller).map(p => {
+                  const charId = betrayalCharSelections[p.id];
+                  const char = charId ? CHARACTERS.find(c => c.id === charId) : null;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between py-1.5 text-sm" style={{ borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
+                      <span style={{ color: "#e8d5b0" }}>{p.name}</span>
+                      <span style={{ color: char ? "#d4af37" : "#5a4a3a" }}>
+                        {char ? char.name : (lang === "en" ? "Not chosen" : "ยังไม่เลือก")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={handleStartBetrayal}
+                disabled={players.filter(p => !p.isStoryteller).length < 3}
+                className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
+                style={{ fontFamily: "var(--font-gothic)" }}
+              >
+                {players.filter(p => !p.isStoryteller).length < 3
+                  ? (lang === "en" ? "Need at least 3 players" : "ต้องการผู้เล่นอย่างน้อย 3 คน")
+                  : `🏚 ${lang === "en" ? "Enter the Mansion" : "เข้าสู่คฤหาสน์"}`}
+              </button>
+            </div>
+          )}
+
           {isHost && dbSession?.game_id === "hues-and-cues" && (
             <div className="space-y-3">
               <div className="gothic-card rounded-2xl p-5">
@@ -876,7 +1087,7 @@ function SessionRoom() {
             </div>
           )}
 
-          {isHost && dbSession?.game_id !== "hues-and-cues" && (() => {
+          {isHost && dbSession?.game_id !== "hues-and-cues" && dbSession?.game_id !== "betrayal-at-house-on-the-hill" && (() => {
             const nonSTCount = players.filter(p => !p.isStoryteller).length;
             const rolesValid = !customRoleIds || customRoleIds.length === nonSTCount;
             const typeColors: Record<string, string> = { townsfolk: "#80b0ff", outsider: "#c0a0ff", minion: "#ffb080", demon: "#ff6060" };

@@ -6,7 +6,9 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { getLang, saveLang } from "@/lib/utils/lang";
 import { FIRST_SHADOWS_ROLES } from "@/lib/games/shadows-over-thornwick/roles";
+import { CHARACTERS } from "@/lib/games/betrayal/data/characters";
 import type { Role } from "@/types/game";
+import type { CharacterDefinition } from "@/lib/games/betrayal/types";
 import { Suspense } from "react";
 
 // RoleCard has no local state — useState is used by GuideContent for lang toggle
@@ -26,6 +28,7 @@ const GUIDES: Record<string, {
   rules: { title: { en: string; th: string }; items: { en: { icon: string; title: string; body: string }[]; th: { icon: string; title: string; body: string }[] } };
   scoring?: { rings: { label: { en: string; th: string }; pts: string; cueGiver: string; color: string }[]; note: { en: string; th: string } };
   roles?: Role[];
+  characters?: CharacterDefinition[];
 }> = {
   "shadows-over-thornwick": {
     name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" },
@@ -132,6 +135,118 @@ const GUIDES: Record<string, {
       },
     },
     roles: FIRST_SHADOWS_ROLES,
+  },
+
+  "betrayal-at-house-on-the-hill": {
+    name: { en: "Betrayal at House on the Hill", th: "Betrayal at House on the Hill" },
+    cover: "/images/games/betrayal/cover.png",
+    players: "3–6",
+    hostLabel: { en: "Host", th: "Host" },
+    tagline: {
+      en: "Explore a haunted mansion room by room — until one of you becomes the traitor.",
+      th: "สำรวจคฤหาสน์ผีสิงทีละห้อง จนกว่าคนหนึ่งในกลุ่มจะกลายเป็นผู้ทรยศ",
+    },
+    overview: {
+      en: "Players cooperate to explore a haunted mansion, building the map tile by tile as they move. Each new room may hold items, omens, or terrifying events. But collecting omen cards brings the Haunt closer — the moment one dark ritual is complete, one player secretly becomes the traitor. Now the survivors must race to complete their objectives before the traitor destroys them all.",
+      th: "ผู้เล่นร่วมมือกันสำรวจคฤหาสน์ผีสิง สร้างแผนที่ทีละห้องขณะเคลื่อนที่ แต่ละห้องอาจซ่อนไอเท็ม ลางร้าย หรือเหตุการณ์น่าสยดสยอง การสะสมการ์ดลางร้ายทำให้ Haunt ใกล้เข้ามา เมื่อพิธีกรรมมืดสำเร็จ ผู้เล่นหนึ่งคนกลายเป็นผู้ทรยศอย่างลับๆ ผู้รอดชีวิตต้องรีบทำภารกิจของตนก่อนที่ผู้ทรยศจะทำลายทุกคน",
+    },
+    winConditions: [
+      {
+        icon: "⚔️",
+        color: "#80b0ff",
+        borderColor: "rgba(74,111,165,0.3)",
+        title: { en: "Heroes Win", th: "ฝ่ายฮีโร่ชนะ" },
+        body: { en: "Complete your haunt's hero objective before the traitor completes theirs. Each haunt has a unique goal — read it carefully when it's revealed.", th: "ทำภารกิจฮีโร่ให้สำเร็จก่อนผู้ทรยศ แต่ละ Haunt มีเป้าหมายเฉพาะ — อ่านให้ดีเมื่อมันถูกเปิดเผย" },
+      },
+      {
+        icon: "💀",
+        color: "#ef4444",
+        borderColor: "rgba(139,26,26,0.3)",
+        title: { en: "Traitor Wins", th: "ผู้ทรยศชนะ" },
+        body: { en: "Complete the traitor's haunt objective. This varies per haunt — kill all heroes, complete a dark ritual, or prevent escape in time.", th: "ทำภารกิจผู้ทรยศให้สำเร็จ สิ่งนี้แตกต่างกันในแต่ละ Haunt — ฆ่าฮีโร่ทั้งหมด ทำพิธีกรรมมืด หรือป้องกันการหลบหนีให้ทันเวลา" },
+      },
+    ],
+    gameFlow: [
+      { icon: "🏰", label: { en: "Lobby", th: "ห้องรอ" } },
+      { icon: "🗺️", label: { en: "Explore", th: "สำรวจ" } },
+      { icon: "💀", label: { en: "Haunt Begins", th: "Haunt เริ่ม" } },
+      { icon: "⚔️", label: { en: "Battle", th: "ต่อสู้" } },
+      { icon: "🏆", label: { en: "Victory", th: "ชนะ" } },
+    ],
+    gameFlowNote: {
+      en: "Exploration ends when the Haunt roll triggers — then it becomes heroes vs. traitor",
+      th: "การสำรวจจบเมื่อ Haunt roll ทำงาน — จากนั้นเป็นฮีโร่ vs ผู้ทรยศ",
+    },
+    phases: [
+      {
+        titleKey: "explore",
+        title: { en: "Explore Phase 🗺️", th: "ช่วงสำรวจ 🗺️" },
+        accent: "rgba(212,175,55,0.15)",
+        steps: {
+          en: [
+            "On your turn, move up to your Speed stat in rooms. Tap highlighted tiles to move there.",
+            "When you step through an open door with no tile beyond it, tap the doorway to reveal a new room from the deck.",
+            "Room type determines its card: yellow dot = Item, red dot = Omen, purple dot = Event. Tap the card that appears to draw it.",
+            "Items go into your inventory. Events and Omens are resolved immediately.",
+            "After an Omen card is drawn, a Haunt Roll is made: 2 dice (each 0–2). If the roll is LESS than the total omen count, the Haunt begins!",
+            "Tap 'End Turn' when done moving and taking actions.",
+          ],
+          th: [
+            "ในตาของคุณ เคลื่อนที่ได้ไม่เกิน Speed stat ของคุณ แตะช่องที่ไฮไลต์เพื่อเดินไปที่นั่น",
+            "เมื่อคุณเดินผ่านประตูที่เปิดอยู่โดยไม่มีห้องอยู่ข้างหน้า ให้แตะทางประตูเพื่อเปิดเผยห้องใหม่จากสำรับ",
+            "ประเภทห้องกำหนดการ์ด: จุดเหลือง = ไอเท็ม, จุดแดง = ลางร้าย, จุดม่วง = เหตุการณ์ แตะการ์ดที่ปรากฏเพื่อหยิบ",
+            "ไอเท็มเข้าไปในกระเป๋าของคุณ เหตุการณ์และลางร้ายจะถูกแก้ไขทันที",
+            "หลังจากหยิบการ์ดลางร้าย จะมีการทอย Haunt Roll: ลูกเต๋า 2 ลูก (แต่ละลูก 0-2) ถ้าผลรวมน้อยกว่าจำนวนลางร้ายทั้งหมด Haunt เริ่ม!",
+            "แตะ 'End Turn' เมื่อเดินและทำการกระทำเสร็จแล้ว",
+          ],
+        },
+      },
+      {
+        titleKey: "haunt",
+        title: { en: "Haunt Phase ⚔️", th: "ช่วง Haunt ⚔️" },
+        accent: "rgba(139,26,26,0.2)",
+        steps: {
+          en: [
+            "The Haunt is revealed — each player privately reads their objective (hero or traitor).",
+            "The traitor's identity is kept secret until they choose to reveal themselves through their actions.",
+            "Heroes and traitor now have conflicting objectives. Read them carefully — every haunt is unique.",
+            "Combat: when two players are in the same room, they can attack. Roll dice equal to your Might; each roll of 1+ deals 1 damage to the opponent's stats.",
+            "A player dies when any of their stats drops to 0. Dead heroes are eliminated; if the traitor dies, heroes win.",
+            "The host can declare the winner manually when objectives are clearly met.",
+          ],
+          th: [
+            "Haunt ถูกเปิดเผย — ผู้เล่นแต่ละคนอ่านวัตถุประสงค์ของตนอย่างลับๆ (ฮีโร่หรือผู้ทรยศ)",
+            "ตัวตนของผู้ทรยศถูกเก็บเป็นความลับจนกว่าพวกเขาจะเลือกเปิดเผยตัวเองผ่านการกระทำ",
+            "ฮีโร่และผู้ทรยศมีวัตถุประสงค์ที่ขัดแย้งกัน อ่านให้ดี — ทุก Haunt ไม่เหมือนกัน",
+            "การต่อสู้: เมื่อผู้เล่นสองคนอยู่ในห้องเดียวกัน พวกเขาสามารถโจมตีได้ ทอยลูกเต๋าเท่ากับ Might ของคุณ แต่ละค่า 1+ ทำให้ stat ของคู่ต่อสู้ลดลง 1",
+            "ผู้เล่นตายเมื่อ stat ใดก็ได้ลดเป็น 0 ฮีโร่ที่ตายจะออกจากเกม ถ้าผู้ทรยศตาย ฮีโร่ชนะ",
+            "Host สามารถประกาศผู้ชนะด้วยตนเองเมื่อวัตถุประสงค์สำเร็จอย่างชัดเจน",
+          ],
+        },
+      },
+    ],
+    characters: CHARACTERS,
+    rules: {
+      title: { en: "Key Rules", th: "กฎสำคัญ" },
+      items: {
+        en: [
+          { icon: "🚪", title: "Rooms connect by doors", body: "You can only move between rooms if both tiles have a matching door on the shared wall. Door indicators are shown as small gold bars on tile edges. You cannot pass through walls." },
+          { icon: "🪜", title: "Stairwells connect floors", body: "Stepping into a Stairwell tile lets you move to the same coordinates on another floor (if a stairwell is there). It costs 1 move to change floors." },
+          { icon: "🎲", title: "Haunt Roll explained", body: "After every omen card, roll 2 dice (each showing 0, 1, or 2). If the total is LESS than the number of omen cards drawn so far, the Haunt triggers immediately." },
+          { icon: "📦", title: "Items stay with you", body: "Item cards go into your inventory and can be used during the haunt phase. Some items grant bonus dice, stat boosts, or special abilities described on the card." },
+          { icon: "🗺️", title: "Map is built in play", body: "The mansion grows as you explore. Every floor has its own tile pool. Starting tiles (Entrance Hall, Upper Landing, Basement Landing) are always in the same positions." },
+          { icon: "💬", title: "Traitor strategy", body: "The traitor should appear cooperative during exploration — collecting items, exploring rooms. Once the Haunt begins, use your powers and proximity to eliminate heroes." },
+        ],
+        th: [
+          { icon: "🚪", title: "ห้องเชื่อมด้วยประตู", body: "คุณสามารถเคลื่อนที่ระหว่างห้องได้เฉพาะเมื่อทั้งสองกระเบื้องมีประตูตรงกันบนผนังที่ใช้ร่วมกัน ไม่สามารถผ่านกำแพงได้" },
+          { icon: "🪜", title: "บันไดเชื่อมชั้น", body: "การเดินเข้าไปในห้อง Stairwell ให้คุณย้ายไปยังพิกัดเดิมบนชั้นอื่น (ถ้ามี Stairwell ที่นั่น) การเปลี่ยนชั้นใช้การเคลื่อนที่ 1 ครั้ง" },
+          { icon: "🎲", title: "Haunt Roll อธิบาย", body: "หลังจากการ์ดลางร้ายทุกใบ ทอยลูกเต๋า 2 ลูก (แต่ละลูกแสดง 0, 1 หรือ 2) ถ้าผลรวมน้อยกว่าจำนวนการ์ดลางร้ายที่หยิบมาทั้งหมด Haunt จะเริ่มทันที" },
+          { icon: "📦", title: "ไอเท็มติดตัวคุณ", body: "การ์ดไอเท็มเข้ากระเป๋าของคุณและใช้ได้ในช่วง Haunt บางไอเท็มให้ลูกเต๋าพิเศษ เพิ่ม stat หรือความสามารถพิเศษ" },
+          { icon: "🗺️", title: "แผนที่สร้างระหว่างเล่น", body: "คฤหาสน์เติบโตขณะที่คุณสำรวจ แต่ละชั้นมีสำรับกระเบื้องของตัวเอง กระเบื้องเริ่มต้น (Entrance Hall, Upper Landing, Basement Landing) อยู่ในตำแหน่งเดิมเสมอ" },
+          { icon: "💬", title: "กลยุทธ์ผู้ทรยศ", body: "ผู้ทรยศควรดูเหมือนให้ความร่วมมือระหว่างการสำรวจ เมื่อ Haunt เริ่ม ใช้พลังและตำแหน่งของคุณเพื่อกำจัดฮีโร่" },
+        ],
+      },
+    },
   },
 
   "hues-and-cues": {
@@ -316,6 +431,60 @@ function RoleCard({ role, lang }: { role: Role; lang: "en" | "th" }) {
         <p className="text-sm leading-relaxed font-medium" style={{ color: "#c0a878" }}>
           {role.ability[lang]}
         </p>
+      </div>
+    </div>
+  );
+}
+
+const STAT_COLOR: Record<string, string> = {
+  speed: "#3b82f6", might: "#ef4444", sanity: "#a855f7", knowledge: "#22c55e",
+};
+
+function CharacterCard({ char }: { char: CharacterDefinition }) {
+  const [imgErr, setImgErr] = useState(false);
+  const CHAR_EMOJI: Record<string, string> = {
+    "father-karras": "✝️", "professor-ashwood": "📚", "lady-blackwood": "🌹",
+    "sergeant-cole": "🎖️", "mrs-holloway": "🗝️", "madame-vesper": "🔮",
+  };
+  const stats = [
+    { key: "speed",     label: "SPD", value: char.speed,     max: char.speedMax },
+    { key: "might",     label: "MGT", value: char.might,     max: char.mightMax },
+    { key: "sanity",    label: "SAN", value: char.sanity,    max: char.sanityMax },
+    { key: "knowledge", label: "KNW", value: char.knowledge, max: char.knowledgeMax },
+  ];
+  return (
+    <div className="gothic-card rounded-2xl overflow-hidden">
+      <div className="relative h-44 w-full flex items-center justify-center" style={{ background: "rgba(13,10,26,0.8)" }}>
+        {!imgErr ? (
+          <Image
+            src={char.image} alt={char.name} fill
+            className="object-cover object-top opacity-80"
+            onError={() => setImgErr(true)}
+          />
+        ) : (
+          <span className="text-6xl opacity-40">{CHAR_EMOJI[char.id] ?? "👤"}</span>
+        )}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 55%)" }} />
+        <div className="absolute bottom-3 left-3 right-3">
+          <div className="text-base font-bold" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{char.name}</div>
+        </div>
+      </div>
+      <div className="p-4 space-y-2">
+        <p className="text-xs italic leading-snug mb-3" style={{ color: "#7a6a5a" }}>&ldquo;{char.trait}&rdquo;</p>
+        {stats.map(s => (
+          <div key={s.key} className="flex items-center gap-2">
+            <span className="text-xs w-8 flex-shrink-0 font-mono" style={{ color: STAT_COLOR[s.key] }}>{s.label}</span>
+            <div className="flex gap-0.5">
+              {Array.from({ length: s.max }, (_, i) => (
+                <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{
+                  background: i < s.value ? STAT_COLOR[s.key] : "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }} />
+              ))}
+            </div>
+            <span className="text-xs" style={{ color: STAT_COLOR[s.key] }}>{s.value}/{s.max}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -509,6 +678,23 @@ function GuideContent() {
             ))}
           </div>
         </section>
+
+        {/* Characters (Betrayal only) */}
+        {guide.characters && (
+          <section>
+            <SectionTitle en="Characters" th="ตัวละคร" lang={lang} />
+            <p className="text-sm mb-6 text-center" style={{ color: "#7a6a5a" }}>
+              {lang === "en"
+                ? "Each character has unique starting stats and a different stat ceiling. Starting values shown — min/max range increases through haunt abilities."
+                : "ตัวละครแต่ละตัวมี stat เริ่มต้นและเพดาน stat ที่แตกต่างกัน ค่าเริ่มต้นที่แสดง — ช่วงต่ำสุด/สูงสุดเพิ่มขึ้นผ่านความสามารถ Haunt"}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {guide.characters.map(char => (
+                <CharacterCard key={char.id} char={char} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Roles (SoT only) */}
         {rolesByType && (
