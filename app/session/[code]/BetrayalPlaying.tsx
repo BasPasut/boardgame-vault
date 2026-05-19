@@ -10,7 +10,7 @@ import type { BetrayalGameState, PlacedTile, Floor, PlayerGameState } from "@/li
 import { TILE_DEFINITIONS, getTile, buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
 import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/games/betrayal/data/cards";
-import { findHaunt } from "@/lib/games/betrayal/data/haunts";
+import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
   getReachable, getUnexploredDoors, buildPlacedTile,
   buildStartingTiles, tileAt,
@@ -308,18 +308,25 @@ function MansionMap({
   // Reachable tiles for current player — includes cross-floor stairwell connections
   const reachable = useMemo(() => {
     if (!isMyTurn || !myState || gs.turn_phase !== "move") return new Set<string>();
-    const movesLeft = myState.speed - gs.moves_used;
+    const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
+    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const movesLeft = effectiveSpeed - gs.moves_used;
     if (movesLeft <= 0) return new Set<string>();
-    return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft);
-  }, [gs, myState, isMyTurn]);
+    return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft, gs.locked_doors ?? []);
+  }, [gs, myState, isMyTurn, myPlayerId]);
 
-  // Unexplored doors on the viewed floor
-  const unexplored = useMemo(() => getUnexploredDoors(gs.placed_tiles, viewFloor), [gs.placed_tiles, viewFloor]);
+  // Unexplored doors on the viewed floor — only show when tiles remain for that floor
+  const unexplored = useMemo(() => {
+    if ((gs.remaining_tiles[viewFloor]?.length ?? 0) === 0) return [];
+    return getUnexploredDoors(gs.placed_tiles, viewFloor);
+  }, [gs.placed_tiles, gs.remaining_tiles, viewFloor]);
 
   // Only show explorable doors when on the player's own floor
   const explorable = useMemo(() => {
     if (!isMyTurn || !myState || myState.floor !== viewFloor || gs.turn_phase !== "move") return [];
-    const movesLeft = myState.speed - gs.moves_used;
+    const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
+    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const movesLeft = effectiveSpeed - gs.moves_used;
     if (movesLeft <= 0) return [];
     return unexplored.filter(({ fromTile }) => {
       const key = `${fromTile.floor},${fromTile.x},${fromTile.y}`;
@@ -390,7 +397,7 @@ function MansionMap({
       </div>
 
       {/* Stairwell hint — visible when player is on a stairwell and has moves */}
-      {isMyTurn && myState && gs.turn_phase === "move" && myState.speed - gs.moves_used > 0 && (() => {
+      {isMyTurn && myState && gs.turn_phase === "move" && (((gs.restrained_players ?? []).includes(myPlayerId ?? "") ? Math.max(0, myState.speed - 1) : myState.speed) - gs.moves_used > 0) && (() => {
         const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
         const isOnStairwell = curTile && getTile(curTile.tile_id)?.type === "stairwell";
         const otherFloors = ([0,1,2] as Floor[]).filter(f => f !== myState.floor && gs.placed_tiles.some(t => t.floor === f && getTile(t.tile_id)?.type === "stairwell"));
@@ -435,6 +442,24 @@ function MansionMap({
                     if (reachable.has(key)) onMove(tile.x, tile.y, viewFloor);
                   }}
                 />
+              </div>
+            );
+          })}
+
+          {/* Locked door icons */}
+          {(gs.locked_doors ?? []).filter(k => k.startsWith(`${viewFloor},`)).map(key => {
+            const parts = key.split(",");
+            const tx = parseInt(parts[1]), ty = parseInt(parts[2]), dir = parts[3];
+            const px = (tx - minX) * TILE_PX;
+            const py = (ty - minY) * TILE_PX;
+            const edgeStyle: React.CSSProperties =
+              dir === "north" ? { top: 0, left: "50%", transform: "translate(-50%,-50%)" } :
+              dir === "south" ? { bottom: 0, left: "50%", transform: "translate(-50%,50%)" } :
+              dir === "east"  ? { right: 0, top: "50%", transform: "translate(50%,-50%)" } :
+                                { left: 0, top: "50%", transform: "translate(-50%,-50%)" };
+            return (
+              <div key={`lock-${key}`} style={{ position: "absolute", left: px, top: py, width: TILE_PX, height: TILE_PX, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", ...edgeStyle, fontSize: 14, zIndex: 15, background: "rgba(10,5,5,0.9)", borderRadius: 4, padding: "1px 2px", lineHeight: 1 }}>🔒</div>
               </div>
             );
           })}
@@ -1175,6 +1200,15 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   // Character dies if either Might OR Sanity hits 0
   const isDead = (might: number, sanity: number) => might <= 0 || sanity <= 0;
 
+  // Amulet: once per game, survive a death — drop to 1 Sanity instead. Consumes the amulet.
+  function checkAmulet(ps: PlayerGameState): { state: PlayerGameState; saved: boolean } {
+    if (!ps.is_dead || !(ps.items ?? []).includes("amulet")) return { state: ps, saved: false };
+    return {
+      state: { ...ps, sanity: 1, might: Math.max(ps.might, 1), is_dead: false, items: ps.items.filter(id => id !== "amulet") },
+      saved: true,
+    };
+  }
+
   // Effective attack Might includes weapon item bonuses
   const getAttackMight = (state: typeof myState) => {
     if (!state) return 1;
@@ -1191,10 +1225,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
+  const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
   const [showRevolverTargets, setShowRevolverTargets] = useState(false);
+  const [showRopeTargets, setShowRopeTargets] = useState(false);
+  const [showDynamiteTargets, setShowDynamiteTargets] = useState(false);
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
   const [showBotLog, setShowBotLog] = useState(false);
   const [showDeathPopup, setShowDeathPopup] = useState(false);
@@ -1261,7 +1298,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
     // Cost: 1 move per room (cross-floor stairwell counts as 1)
     const newMovesUsed = gs.moves_used + 1;
-    const movesLeft = myState.speed - newMovesUsed;
+    const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
+    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const movesLeft = effectiveSpeed - newMovesUsed;
 
     // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
     const tileKey = `${floor},${x},${y}`;
@@ -1427,12 +1466,20 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       } else if (cardId === "omen-girl") {
         updatedState.sanity = Math.max(myState.sanity - 1, 0);
         updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
-        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+        if (updatedState.is_dead) {
+          const { state: saved, saved: didSave } = checkAmulet(updatedState);
+          if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them from death!`)); }
+          else playSfx("/audio/betrayal/sfx/scream.mp3");
+        }
       } else if (cardId === "omen-mask") {
         updatedState.might = Math.max(myState.might - 1, 0);
         updatedState.knowledge = Math.min(myState.knowledge + 2, char?.knowledgeMax ?? 8);
         updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
-        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+        if (updatedState.is_dead) {
+          const { state: saved, saved: didSave } = checkAmulet(updatedState);
+          if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them from death!`)); }
+          else playSfx("/audio/betrayal/sfx/scream.mp3");
+        }
       } else if (cardId === "omen-dog") {
         updatedState.speed = Math.min(myState.speed + 1, char?.speedMax ?? 8);
       } else if (cardId === "omen-book" && gs.item_deck.length > 0) {
@@ -1449,11 +1496,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         const allStates = { ...gs.player_states };
         for (const pid of Object.keys(allStates)) {
           const newSanity = Math.max(allStates[pid].sanity - 1, 0);
-          allStates[pid] = {
-            ...allStates[pid],
-            sanity: newSanity,
-            is_dead: isDead(allStates[pid].might, newSanity),
-          };
+          let ps = { ...allStates[pid], sanity: newSanity, is_dead: isDead(allStates[pid].might, newSanity) };
+          if (ps.is_dead) {
+            const { state: saved, saved: didSave } = checkAmulet(ps);
+            if (didSave) { ps = saved; newLog.push(addLog("stat", `${players.find(p => p.id === pid)?.name ?? pid}'s Amulet saved them!`)); }
+          }
+          allStates[pid] = ps;
         }
         allStates[myPlayerId!] = { ...allStates[myPlayerId!], drawn_tiles: newDrawnTiles };
         patch.player_states = allStates;
@@ -1466,7 +1514,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             const roll = rollDice(2).reduce((a, b) => a + b, 0);
             if (roll < 3) {
               const newSanity = Math.max(ps.sanity - 1, 0);
-              roomStates[pid] = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+              let newPs = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+              if (newPs.is_dead) {
+                const { state: saved, saved: didSave } = checkAmulet(newPs);
+                if (didSave) { newPs = saved; newLog.push(addLog("stat", `${pid === myPlayerId ? playerName : pid}'s Amulet saved them!`)); }
+              }
+              roomStates[pid] = newPs;
               newLog.push(addLog("stat", `${pid === myPlayerId ? playerName : pid} failed Sanity roll (${roll}) — lost 1 Sanity`));
             }
           }
@@ -1536,7 +1589,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           updatedState.sanity = Math.max(myState.sanity - 1, 0);
           updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Dark Vision (rolled ${total})`));
-          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+          if (updatedState.is_dead) {
+            const { state: saved, saved: didSave } = checkAmulet(updatedState);
+            if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
+            else playSfx("/audio/betrayal/sfx/scream.mp3");
+          }
         }
         setDiceResult({ values: roll, label: `Dark Vision — rolled ${total}` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1558,7 +1615,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           updatedState.sanity = Math.max(myState.sanity - 1, 0);
           updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Writing on the Wall (rolled ${total})`));
-          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+          if (updatedState.is_dead) {
+            const { state: saved, saved: didSave } = checkAmulet(updatedState);
+            if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
+            else playSfx("/audio/betrayal/sfx/scream.mp3");
+          }
         }
         setDiceResult({ values: roll, label: `Writing on the Wall — rolled ${total}` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1567,11 +1628,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         for (const pid of Object.keys(floorStates)) {
           if (floorStates[pid].floor === myState.floor) {
             const newSanity = Math.max(floorStates[pid].sanity - 1, 0);
-            floorStates[pid] = {
-              ...floorStates[pid],
-              sanity: newSanity,
-              is_dead: isDead(floorStates[pid].might, newSanity),
-            };
+            let ps = { ...floorStates[pid], sanity: newSanity, is_dead: isDead(floorStates[pid].might, newSanity) };
+            if (ps.is_dead) {
+              const { state: saved, saved: didSave } = checkAmulet(ps);
+              if (didSave) { ps = saved; newLog.push(addLog("stat", `${players.find(p => p.id === pid)?.name ?? pid}'s Amulet saved them!`)); }
+            }
+            floorStates[pid] = ps;
           }
         }
         // Record drawn_tiles for current player
@@ -1584,10 +1646,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         updatedState.might = Math.max(myState.might - total, 0);
         updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
         newLog.push(addLog("stat", `${playerName} lost ${total} Might from Falling`));
+        if (updatedState.is_dead) {
+          const { state: saved, saved: didSave } = checkAmulet(updatedState);
+          if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
+          else playSfx("/audio/betrayal/sfx/scream.mp3");
+        } else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
         setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
-        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
-        else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
       } else if (cardId === "ev-the-smell") {
         const roll = rollDice(2);
         const total = roll.reduce((a, b) => a + b, 0);
@@ -1595,8 +1660,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           updatedState.might = Math.max(myState.might - 2, 0);
           updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 2 Might from The Smell (rolled ${total})`));
-          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
-          else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+          if (updatedState.is_dead) {
+            const { state: saved, saved: didSave } = checkAmulet(updatedState);
+            if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
+            else playSfx("/audio/betrayal/sfx/scream.mp3");
+          } else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
         } else {
           newLog.push(addLog("stat", `${playerName} escaped The Smell (rolled ${total})`));
         }
@@ -1617,9 +1685,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         }
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-locked-door") {
-        // Still write drawn_tiles even for flavor-only cards
+        // Lock a random door on the current tile that connects to a neighbor
+        const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
+        const activeDoors = (["north","east","south","west"] as const).filter(dir => {
+          if (!curTile?.doors[dir]) return false;
+          const dx = dir === "east" ? 1 : dir === "west" ? -1 : 0;
+          const dy = dir === "south" ? 1 : dir === "north" ? -1 : 0;
+          return !!gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x + dx && t.y === myState.y + dy);
+        });
+        const chosenDir = activeDoors.length > 0
+          ? activeDoors[Math.floor(Math.random() * activeDoors.length)]
+          : null;
+        if (chosenDir) {
+          const lockKey = `${myState.floor},${myState.x},${myState.y},${chosenDir}`;
+          patch.locked_doors = [...new Set([...(gs.locked_doors ?? []), lockKey])];
+          newLog.push(addLog("system", `Locked Door: the ${chosenDir} exit of this room is sealed 🔒 (Might 4+ or Skeleton Key to open)`));
+        } else {
+          newLog.push(addLog("system", `Locked Door: no connected exits to seal in this room`));
+        }
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
-        newLog.push(addLog("system", `Locked Door: one exit in this room is sealed (Might 4+ or Skeleton Key to open)`));
       } else {
         // Fallback: still persist drawn_tiles
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1650,36 +1734,42 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     let damage = 0;
     const newPlayerStates = { ...gs.player_states };
 
+    const newLog2 = [...gs.event_log];
     if (attackTotal > defendTotal) {
       winner = "attacker";
       damage = attackTotal - defendTotal;
+      // Axe: if attacker rolled 4+ total, deal +1 bonus damage
+      if ((myState.items ?? []).includes("axe") && attackTotal >= 4) damage += 1;
       const newMight = Math.max(0, targetState.might - damage);
-      newPlayerStates[targetId] = {
-        ...targetState,
-        might: newMight,
-        is_dead: isDead(newMight, targetState.sanity),
-      };
+      let tps = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
+      if (tps.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(tps);
+        if (didSave) { tps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === targetId)?.name ?? targetId}'s Amulet saved them!`)); }
+      }
+      newPlayerStates[targetId] = tps;
       // Sacrificial Dagger costs 1 Sanity per use
       if (myState.items?.includes("sacrificial-dagger")) {
         const newSanity = Math.max(0, myState.sanity - 1);
-        newPlayerStates[myPlayerId!] = {
-          ...myState,
-          sanity: newSanity,
-          is_dead: isDead(myState.might, newSanity),
-        };
+        let mps = { ...myState, sanity: newSanity, is_dead: isDead(myState.might, newSanity) };
+        if (mps.is_dead) {
+          const { state: saved, saved: didSave } = checkAmulet(mps);
+          if (didSave) { mps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === myPlayerId)?.name ?? "?"}'s Amulet saved them!`)); }
+        }
+        newPlayerStates[myPlayerId!] = mps;
       }
-      if (isDead(newMight, targetState.sanity)) playSfx("/audio/betrayal/sfx/scream.mp3");
+      if (newPlayerStates[targetId].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else if (defendTotal > attackTotal) {
       winner = "defender";
       damage = defendTotal - attackTotal;
       const newMight = Math.max(0, myState.might - damage);
-      newPlayerStates[myPlayerId!] = {
-        ...myState,
-        might: newMight,
-        is_dead: isDead(newMight, myState.sanity),
-      };
-      if (isDead(newMight, myState.sanity)) playSfx("/audio/betrayal/sfx/scream.mp3");
+      let mps = { ...myState, might: newMight, is_dead: isDead(newMight, myState.sanity) };
+      if (mps.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(mps);
+        if (didSave) { mps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === myPlayerId)?.name ?? "?"}'s Amulet saved them!`)); }
+      }
+      newPlayerStates[myPlayerId!] = mps;
+      if (newPlayerStates[myPlayerId!].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else {
       playSfx("/audio/betrayal/sfx/dice-roll.mp3");
@@ -1692,12 +1782,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         ? `${attackerPlayer?.name} hit ${targetPlayer?.name} for ${damage} Might${newPlayerStates[targetId].is_dead ? " — eliminated!" : ""}`
         : `${targetPlayer?.name} countered ${attackerPlayer?.name} for ${damage} Might${newPlayerStates[myPlayerId!]?.is_dead ? " — eliminated!" : ""}`;
 
-    const newLog = [...gs.event_log, addLog("stat", resultMsg)].slice(-30);
-
+    newLog2.push(addLog("stat", resultMsg));
     await updateGs({
       player_states: newPlayerStates,
       turn_phase: "done", // attacking costs your action for the turn
-      event_log: newLog,
+      event_log: newLog2.slice(-30),
     });
 
     setCombatResult({
@@ -1731,14 +1820,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const attackerPlayer = players.find(p => p.id === myPlayerId);
     const targetPlayer   = players.find(p => p.id === targetId);
 
+    const revolverLog = [...gs.event_log];
     if (winner === "attacker") {
       const newMight = Math.max(0, targetState.might - damage);
-      newPlayerStates[targetId] = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
-      if (newPlayerStates[targetId].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+      let tps = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
+      if (tps.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(tps);
+        if (didSave) { tps = saved; revolverLog.push(addLog("stat", `${targetPlayer?.name}'s Amulet saved them!`)); }
+        else playSfx("/audio/betrayal/sfx/scream.mp3");
+      }
+      newPlayerStates[targetId] = tps;
     } else if (winner === "defender") {
       const newMight = Math.max(0, myState.might - damage);
-      newPlayerStates[myPlayerId!] = { ...myState, might: newMight, is_dead: isDead(newMight, myState.sanity) };
-      if (newPlayerStates[myPlayerId!].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+      let mps = { ...myState, might: newMight, is_dead: isDead(newMight, myState.sanity) };
+      if (mps.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(mps);
+        if (didSave) { mps = saved; revolverLog.push(addLog("stat", `${attackerPlayer?.name}'s Amulet saved them!`)); }
+        else playSfx("/audio/betrayal/sfx/scream.mp3");
+      }
+      newPlayerStates[myPlayerId!] = mps;
     }
 
     const resultMsg = winner === "tie"
@@ -1747,12 +1847,80 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       ? `${attackerPlayer?.name} shot ${targetPlayer?.name} for ${damage} Might${newPlayerStates[targetId].is_dead ? " — eliminated!" : ""}`
       : `${targetPlayer?.name} evaded and countered ${attackerPlayer?.name} for ${damage} Might`;
 
-    const newLog = [...gs.event_log, addLog("stat", resultMsg)].slice(-30);
-    await updateGs({ player_states: newPlayerStates, turn_phase: "done", event_log: newLog });
+    revolverLog.push(addLog("stat", resultMsg));
+    await updateGs({ player_states: newPlayerStates, turn_phase: "done", event_log: revolverLog.slice(-30) });
 
     setCombatResult({ attackerName: attackerPlayer?.name ?? "?", targetName: targetPlayer?.name ?? "?", attackerRolls, defenderRolls, damage, winner });
     setShowRevolverTargets(false);
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+
+  // ── Rope attack (restrain target — they lose 1 Speed next turn) ───────────
+  const handleRopeAttack = useCallback(async (targetId: string) => {
+    if (!isMyTurn || !myState || gs.turn_phase !== "action" || gs.phase !== "haunt") return;
+    if (!(myState.items ?? []).includes("rope")) return;
+    const targetState = gs.player_states[targetId];
+    if (!targetState || targetState.is_dead) return;
+
+    const attackerRolls = rollDice(Math.max(1, myState.might));
+    const defenderRolls = rollDice(Math.max(1, targetState.might));
+    const atkTotal = attackerRolls.reduce((a, b) => a + b, 0);
+    const defTotal = defenderRolls.reduce((a, b) => a + b, 0);
+
+    const attackerPlayer = players.find(p => p.id === myPlayerId);
+    const targetPlayer = players.find(p => p.id === targetId);
+
+    let newRestrained = [...(gs.restrained_players ?? [])];
+    let resultMsg: string;
+
+    if (atkTotal > defTotal) {
+      newRestrained = [...new Set([...newRestrained, targetId])];
+      resultMsg = `${attackerPlayer?.name} restrained ${targetPlayer?.name} with Rope (${atkTotal} vs ${defTotal}) — they lose 1 Speed next turn`;
+    } else {
+      resultMsg = `${targetPlayer?.name} broke free from Rope (${atkTotal} vs ${defTotal})`;
+    }
+    playSfx("/audio/betrayal/sfx/dice-roll.mp3");
+
+    const newLog = [...gs.event_log, addLog("stat", resultMsg)].slice(-30);
+    await updateGs({ restrained_players: newRestrained, turn_phase: "done", event_log: newLog });
+    setDiceResult({ values: [...attackerRolls, ...defenderRolls], label: resultMsg });
+    setShowRopeTargets(false);
+  }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+
+  // ── Dynamite (destroy a door, deal 2 Might to everyone in room) ───────────
+  const handleDynamite = useCallback(async (dir: "north" | "east" | "south" | "west") => {
+    if (!isMyTurn || !myState || !myPlayerId || gs.turn_phase !== "action") return;
+    if (!(myState.items ?? []).includes("dynamite")) return;
+
+    const lockKey = `${myState.floor},${myState.x},${myState.y},${dir}`;
+    const newLocked = [...new Set([...(gs.locked_doors ?? []), lockKey])];
+    const newPlayerStates = { ...gs.player_states };
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log];
+
+    // Damage all players in the same room (including self!)
+    for (const [pid, ps] of Object.entries(newPlayerStates)) {
+      if (ps.is_dead || ps.floor !== myState.floor || ps.x !== myState.x || ps.y !== myState.y) continue;
+      const newMight = Math.max(0, ps.might - 2);
+      let damaged = { ...ps, might: newMight, is_dead: isDead(newMight, ps.sanity) };
+      if (damaged.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(damaged);
+        if (didSave) { damaged = saved; newLog.push(addLog("stat", `${players.find(p => p.id === pid)?.name ?? pid}'s Amulet saved them!`)); }
+      }
+      newPlayerStates[pid] = damaged;
+    }
+
+    // Remove dynamite from my inventory
+    newPlayerStates[myPlayerId] = {
+      ...newPlayerStates[myPlayerId],
+      items: (newPlayerStates[myPlayerId].items ?? []).filter(id => id !== "dynamite"),
+    };
+
+    newLog.push(addLog("stat", `${playerName} used Dynamite! ${dir} door destroyed 💥 — everyone in room took 2 Might damage`));
+    playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+
+    await updateGs({ locked_doors: newLocked, player_states: newPlayerStates, turn_phase: "done", event_log: newLog.slice(-30) });
+    setShowDynamiteTargets(false);
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, playSfx]);
 
   // ── End turn ──────────────────────────────────────────────────────────────
   const handleEndTurn = useCallback(async () => {
@@ -1767,10 +1935,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       nextIndex = (nextIndex + 1) % gs.turn_order.length;
       attempts++;
     }
+    // Clear restraint for the player ending their turn (restraint lasts 1 turn)
+    const currentId = gs.turn_order[gs.current_turn_index];
+    const newRestrained = (gs.restrained_players ?? []).filter(id => id !== currentId);
     await updateGs({
       current_turn_index: nextIndex,
       turn_phase: "move",
       moves_used: 0,
+      restrained_players: newRestrained,
     });
   }, [isMyTurn, gs, updateGs]);
 
@@ -1831,6 +2003,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           objective={myState?.is_traitor ? gs.haunt_objectives.traitor : gs.haunt_objectives.heroes}
           onDismiss={() => setHauntDismissed(true)}
         />
+      )}
+
+      {/* Item card viewer (tap item chip to inspect) */}
+      {viewingItemCard && (
+        <CardOverlay cardId={viewingItemCard} lang={lang} onDismiss={() => setViewingItemCard(null)} />
       )}
 
       {/* Death popup */}
@@ -1950,6 +2127,33 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           className="flex-shrink-0 lg:w-80 xl:w-96 flex flex-col gap-3 p-3 overflow-y-auto border-t lg:border-t-0 lg:border-l max-h-[48vh] lg:max-h-none"
           style={{ borderColor: "rgba(212,175,55,0.08)" }}
         >
+          {/* Haunt scenario guide — always visible during haunt */}
+          {gs.phase === "haunt" && gs.haunt_number != null && (() => {
+            const scenario = getHaunt(gs.haunt_number);
+            if (!scenario) return null;
+            const isTraitor = myState?.is_traitor ?? false;
+            const accent = isTraitor ? "#ef4444" : "#22c55e";
+            const bg     = isTraitor ? "rgba(239,68,68,0.06)" : "rgba(34,197,94,0.06)";
+            const border = isTraitor ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.18)";
+            const powers = isTraitor ? scenario.traitorPowers : scenario.heroPowers;
+            const objective = isTraitor ? scenario.traitorObjective : scenario.heroObjective;
+            return (
+              <div className="flex-shrink-0 rounded-xl p-3 space-y-2 text-xs" style={{ background: bg, border: `1px solid ${border}` }}>
+                <p className="font-black uppercase tracking-widest" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
+                  {isTraitor ? "⚔" : "🕯"} Haunt #{gs.haunt_number} — {scenario.name}
+                </p>
+                <p style={{ color: "#c8b89a" }}><span className="font-bold">Goal: </span>{objective}</p>
+                {powers && powers.length > 0 && (
+                  <ul className="space-y-1 pl-2">
+                    {powers.map((p, i) => (
+                      <li key={i} style={{ color: "#7a6a5a" }}>• {p}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Phase indicator */}
           <div className="flex-shrink-0 flex items-center justify-between">
             <span className="text-xs tracking-widest uppercase" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
@@ -2008,6 +2212,60 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     🔫 Revolver
                   </button>
                 )}
+                {/* Garden escape — only for haunts where Garden is an escape route */}
+                {gs.phase === "haunt" && isMyTurn && !myState?.is_traitor && gs.turn_phase === "action" && (() => {
+                  const scenario = getHaunt(gs.haunt_number ?? -1);
+                  const gardenRelevant = scenario && (
+                    scenario.heroObjective.includes("Garden") ||
+                    (scenario.heroPowers ?? []).some(p => p.includes("Garden"))
+                  );
+                  if (!gardenRelevant) return null;
+                  const onGarden = myState && gs.placed_tiles.find(t =>
+                    t.tile_id === "garden" && t.floor === myState.floor && t.x === myState.x && t.y === myState.y
+                  );
+                  if (!onGarden) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        const rolls = rollDice(Math.max(1, myState!.speed));
+                        const total = rolls.reduce((a, b) => a + b, 0);
+                        setDiceResult({ values: rolls, label: total >= 4
+                          ? `🏃 Escape Roll — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
+                          : `🏃 Escape Roll — ${total} < 4. Not fast enough — try again next turn.` });
+                      }}
+                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      🏃 Attempt Escape (Speed 4+)
+                    </button>
+                  );
+                })()}
+                {/* Rope attack — restrain a target in same room */}
+                {gs.phase === "haunt" && gs.turn_phase === "action" && (myState?.items ?? []).includes("rope") && validAttackTargets.length > 0 && !showRopeTargets && !showAttackTargets && !showRevolverTargets && !showDynamiteTargets && (
+                  <button onClick={() => setShowRopeTargets(true)}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b", fontFamily: "var(--font-gothic)" }}>
+                    🪢 Rope
+                  </button>
+                )}
+                {/* Dynamite — destroy a door in this room */}
+                {gs.phase === "haunt" && gs.turn_phase === "action" && (myState?.items ?? []).includes("dynamite") && !showDynamiteTargets && !showAttackTargets && !showRevolverTargets && !showRopeTargets && (() => {
+                  const curTile = myState && gs.placed_tiles.find(t => t.tile_id !== undefined && t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
+                  if (!curTile) return null;
+                  const availableDoors = (["north","east","south","west"] as const).filter(dir => {
+                    if (!curTile.doors[dir]) return false;
+                    const dx = dir === "east" ? 1 : dir === "west" ? -1 : 0;
+                    const dy = dir === "south" ? 1 : dir === "north" ? -1 : 0;
+                    return !!gs.placed_tiles.find(t => t.floor === myState!.floor && t.x === myState!.x + dx && t.y === myState!.y + dy);
+                  });
+                  if (availableDoors.length === 0) return null;
+                  return (
+                    <button onClick={() => setShowDynamiteTargets(true)}
+                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                      💣 Dynamite
+                    </button>
+                  );
+                })()}
               </div>
 
               {showAttackTargets && (
@@ -2067,6 +2325,67 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   </button>
                 </div>
               )}
+
+              {showRopeTargets && (
+                <div className="rounded-xl p-3 space-y-2"
+                  style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#f59e0b", fontFamily: "var(--font-gothic)" }}>
+                    🪢 Restrain target (Might roll)
+                  </p>
+                  {validAttackTargets.map((target) => {
+                    const tState = gs.player_states[target.id];
+                    const tChar = tState ? getCharacter(tState.character_id) : null;
+                    return (
+                      <button key={target.id}
+                        onClick={() => handleRopeAttack(target.id)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left"
+                        style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", color: "#e8d5b0" }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)" }}>{target.name}</p>
+                          {tChar && <p className="text-xs" style={{ color: "#7a6a5a" }}>{tChar.name} · Might {tState?.might ?? "?"}</p>}
+                        </div>
+                        <span className="text-sm flex-shrink-0" style={{ color: "#f59e0b" }}>Bind →</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setShowRopeTargets(false)}
+                    className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {showDynamiteTargets && (() => {
+                const curTile = myState && gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
+                if (!curTile) return null;
+                const availableDoors = (["north","east","south","west"] as const).filter(dir => {
+                  if (!curTile.doors[dir]) return false;
+                  const dx = dir === "east" ? 1 : dir === "west" ? -1 : 0;
+                  const dy = dir === "south" ? 1 : dir === "north" ? -1 : 0;
+                  return !!gs.placed_tiles.find(t => t.floor === myState!.floor && t.x === myState!.x + dx && t.y === myState!.y + dy);
+                });
+                return (
+                  <div className="rounded-xl p-3 space-y-2"
+                    style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                      💣 Blow up which door?
+                    </p>
+                    <p className="text-xs" style={{ color: "#7a6a5a" }}>Everyone in this room takes 2 Might damage!</p>
+                    {availableDoors.map(dir => (
+                      <button key={dir}
+                        onClick={() => handleDynamite(dir)}
+                        className="w-full px-3 py-2.5 rounded-lg text-left text-sm font-bold"
+                        style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                        {dir.charAt(0).toUpperCase() + dir.slice(1)} door
+                      </button>
+                    ))}
+                    <button onClick={() => setShowDynamiteTargets(false)}
+                      className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
+                      Cancel
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -2098,12 +2417,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     const item = getCard(itemId);
                     const isConsumable = itemId === "healing-salve" || itemId === "smelling-salts";
                     return item ? (
-                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
-                        style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
+                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
+                        style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}
+                        onClick={() => setViewingItemCard(itemId)}>
                         {item.name}
                         {isConsumable && isMyTurn && (
                           <button
-                            onClick={() => handleUseItem(itemId)}
+                            onClick={(e) => { e.stopPropagation(); handleUseItem(itemId); }}
                             className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold"
                             style={{ background: "rgba(245,158,11,0.25)", color: "#fcd34d", fontSize: "0.65rem" }}>
                             Use

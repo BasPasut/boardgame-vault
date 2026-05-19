@@ -39,12 +39,21 @@ export function areDoorConnected(
 /**
  * Get all valid moves from a position (BFS up to `speed` steps).
  * Returns Set of "floor,x,y" strings reachable.
+ * lockedDoors: array of "floor,x,y,dir" strings — connections that cannot be traversed.
  */
 export function getReachable(
   tiles: PlacedTile[],
   floor: Floor, x: number, y: number,
   speed: number,
+  lockedDoors: string[] = [],
 ): Set<string> {
+  const lockedSet = new Set(lockedDoors);
+
+  function isLocked(f: Floor, tx: number, ty: number, dir: Direction): boolean {
+    return lockedSet.has(`${f},${tx},${ty},${dir}`) ||
+           lockedSet.has(`${f},${tx + DELTA[dir].dx},${ty + DELTA[dir].dy},${OPPOSITE[dir]}`);
+  }
+
   const visited = new Set<string>();
   const queue: { floor: Floor; x: number; y: number; steps: number }[] = [
     { floor, x, y, steps: 0 },
@@ -79,6 +88,7 @@ export function getReachable(
 
     for (const dir of ["north", "east", "south", "west"] as Direction[]) {
       if (!curTile.doors[dir]) continue;
+      if (isLocked(cur.floor, cur.x, cur.y, dir)) continue; // locked door
       const { dx, dy } = DELTA[dir];
       const nx = cur.x + dx, ny = cur.y + dy;
       const neighbor = tileAt(tiles, cur.floor, nx, ny);

@@ -61,7 +61,8 @@ function rotateDoors(base, rotation) {
 }
 function tileAt(tiles, floor, x, y) { return tiles.find(t => t.floor===floor && t.x===x && t.y===y); }
 
-function getReachable(tiles, floor, x, y, speed) {
+function getReachable(tiles, floor, x, y, speed, lockedDoors = []) {
+  const lockedSet = new Set(lockedDoors);
   const visited = new Set();
   const queue = [{ floor, x, y, steps: 0 }];
   visited.add(`${floor},${x},${y}`);
@@ -84,8 +85,11 @@ function getReachable(tiles, floor, x, y, speed) {
     }
     for (const dir of DIRS) {
       if (!curTile.doors[dir]) continue;
+      // skip locked doors
+      if (lockedSet.has(`${cur.floor},${cur.x},${cur.y},${dir}`)) continue;
       const {dx,dy} = DELTA[dir];
       const nx=cur.x+dx, ny=cur.y+dy;
+      if (lockedSet.has(`${cur.floor},${nx},${ny},${OPPOSITE[dir]}`)) continue;
       const neighbor = tileAt(tiles, cur.floor, nx, ny);
       if (!neighbor || !neighbor.doors[OPPOSITE[dir]]) continue;
       const key = `${cur.floor},${nx},${ny}`;
@@ -206,6 +210,8 @@ function initGame(numPlayers) {
     current_turn_index: 0,
     turn_phase: "move",
     moves_used: 0,
+    locked_doors: [],
+    restrained_players: [],
     player_states: playerStates,
     event_log: [],
     haunt_objectives: null,
@@ -355,7 +361,7 @@ function executeBotTurn(gs, players, botId) {
 
   const floor     = botState.floor;
   const movesLeft = botState.speed;
-  const reachable = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft);
+  const reachable = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft, cur.locked_doors ?? []);
   const unexplored = getUnexploredDoors(cur.placed_tiles, floor);
   const hasMore   = cur.remaining_tiles[floor].length > 0;
 
@@ -556,12 +562,14 @@ function executeBotTurn(gs, players, botId) {
 
 function nextTurn(gs) {
   const len = gs.turn_order.length;
+  const currentId = gs.turn_order[gs.current_turn_index];
   let nextIdx = (gs.current_turn_index+1) % len;
   let attempts = 0;
   while (gs.player_states[gs.turn_order[nextIdx]]?.is_dead && attempts<len) {
     nextIdx=(nextIdx+1)%len; attempts++;
   }
-  return {...gs, current_turn_index:nextIdx, turn_phase:"move", moves_used:0, turn_drawn_tiles:[]};
+  const newRestrained = (gs.restrained_players ?? []).filter(id => id !== currentId);
+  return {...gs, current_turn_index:nextIdx, turn_phase:"move", moves_used:0, turn_drawn_tiles:[], restrained_players:newRestrained};
 }
 
 // ─── Run One Full Game ────────────────────────────────────────────────────────
@@ -613,7 +621,7 @@ function runGame(numPlayers, maxTurns=400) {
       const anyCanAct = allLiving.some(id => {
         const ps = gs.player_states[id];
         if (!ps) return false;
-        const r = getReachable(gs.placed_tiles, ps.floor, ps.x, ps.y, ps.speed);
+        const r = getReachable(gs.placed_tiles, ps.floor, ps.x, ps.y, ps.speed, gs.locked_doors ?? []);
         const u = getUnexploredDoors(gs.placed_tiles, ps.floor);
         const canExplore = u.some(({fromTile}) => {
           const key = `${fromTile.floor},${fromTile.x},${fromTile.y}`;
@@ -768,7 +776,7 @@ function runSimulation(numGames=200, playersPerGame=4) {
       const gs = initGame(3);
       const botId = gs.turn_order[0];
       const bs = gs.player_states[botId];
-      const r = getReachable(gs.placed_tiles, bs.floor, bs.x, bs.y, bs.speed);
+      const r = getReachable(gs.placed_tiles, bs.floor, bs.x, bs.y, bs.speed, gs.locked_doors ?? []);
       const unexplored = getUnexploredDoors(gs.placed_tiles, bs.floor);
       const canMove = r.size > 0;
       const canExplore = unexplored.length > 0;

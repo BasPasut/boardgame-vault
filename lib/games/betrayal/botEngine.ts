@@ -261,11 +261,12 @@ async function executeBotTurn(
   }
 
   // ── 1. Move / Explore ───────────────────────────────────────────────────────
-  const movesLeft = botState.speed; // bot uses all speed at once
+  const isRestrained = (cur.restrained_players ?? []).includes(botId);
+  const movesLeft = isRestrained ? Math.max(0, botState.speed - 1) : botState.speed; // rope restraint reduces speed by 1
   const floor = botState.floor;
 
   const unexplored   = getUnexploredDoors(cur.placed_tiles, floor);
-  const reachable    = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft);
+  const reachable    = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft, cur.locked_doors ?? []);
   const hasMoreTiles = cur.remaining_tiles[floor].length > 0;
 
   // Candidates for exploration (unexplored doors reachable from bot's position)

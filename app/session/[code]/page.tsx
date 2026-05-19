@@ -728,6 +728,8 @@ function SessionRoom() {
         current_turn_index: 0,
         turn_phase: "move",
         moves_used: 0,
+        locked_doors: [],
+        restrained_players: [],
         player_states: playerStates,
         event_log: [],
         haunt_objectives: null,
