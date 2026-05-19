@@ -2328,6 +2328,16 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   End Turn
                 </button>
 
+                {/* Haunt move phase: let player voluntarily switch to action without exhausting all moves */}
+                {gs.phase === "haunt" && gs.turn_phase === "move" && (
+                  <button
+                    onClick={async () => { await updateGs({ turn_phase: "action" }); }}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                    ⚔ Take Action
+                  </button>
+                )}
+
                 {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && !showRevolverTargets && (
                   <button onClick={() => setShowAttackTargets(true)}
                     className="flex-1 py-2 rounded-xl text-sm font-bold"
