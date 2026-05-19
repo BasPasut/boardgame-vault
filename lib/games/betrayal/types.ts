@@ -117,6 +117,8 @@ export interface BetrayalGameState {
   turn_phase: TurnPhase;
   moves_used: number;
 
+  locked_doors: string[];      // "floor,x,y,dir" — one side of a locked door connection
+
   player_states: Record<string, PlayerGameState>;
   event_log: GameEvent[];
 

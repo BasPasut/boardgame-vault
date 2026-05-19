@@ -265,7 +265,7 @@ async function executeBotTurn(
   const floor = botState.floor;
 
   const unexplored   = getUnexploredDoors(cur.placed_tiles, floor);
-  const reachable    = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft);
+  const reachable    = getReachable(cur.placed_tiles, floor, botState.x, botState.y, movesLeft, cur.locked_doors ?? []);
   const hasMoreTiles = cur.remaining_tiles[floor].length > 0;
 
   // Candidates for exploration (unexplored doors reachable from bot's position)

@@ -10,7 +10,7 @@ import type { BetrayalGameState, PlacedTile, Floor, PlayerGameState } from "@/li
 import { TILE_DEFINITIONS, getTile, buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
 import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/games/betrayal/data/cards";
-import { findHaunt } from "@/lib/games/betrayal/data/haunts";
+import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
   getReachable, getUnexploredDoors, buildPlacedTile,
   buildStartingTiles, tileAt,
@@ -310,11 +310,14 @@ function MansionMap({
     if (!isMyTurn || !myState || gs.turn_phase !== "move") return new Set<string>();
     const movesLeft = myState.speed - gs.moves_used;
     if (movesLeft <= 0) return new Set<string>();
-    return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft);
+    return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft, gs.locked_doors ?? []);
   }, [gs, myState, isMyTurn]);
 
-  // Unexplored doors on the viewed floor
-  const unexplored = useMemo(() => getUnexploredDoors(gs.placed_tiles, viewFloor), [gs.placed_tiles, viewFloor]);
+  // Unexplored doors on the viewed floor — only show when tiles remain for that floor
+  const unexplored = useMemo(() => {
+    if ((gs.remaining_tiles[viewFloor]?.length ?? 0) === 0) return [];
+    return getUnexploredDoors(gs.placed_tiles, viewFloor);
+  }, [gs.placed_tiles, gs.remaining_tiles, viewFloor]);
 
   // Only show explorable doors when on the player's own floor
   const explorable = useMemo(() => {
@@ -435,6 +438,24 @@ function MansionMap({
                     if (reachable.has(key)) onMove(tile.x, tile.y, viewFloor);
                   }}
                 />
+              </div>
+            );
+          })}
+
+          {/* Locked door icons */}
+          {(gs.locked_doors ?? []).filter(k => k.startsWith(`${viewFloor},`)).map(key => {
+            const parts = key.split(",");
+            const tx = parseInt(parts[1]), ty = parseInt(parts[2]), dir = parts[3];
+            const px = (tx - minX) * TILE_PX;
+            const py = (ty - minY) * TILE_PX;
+            const edgeStyle: React.CSSProperties =
+              dir === "north" ? { top: 0, left: "50%", transform: "translate(-50%,-50%)" } :
+              dir === "south" ? { bottom: 0, left: "50%", transform: "translate(-50%,50%)" } :
+              dir === "east"  ? { right: 0, top: "50%", transform: "translate(50%,-50%)" } :
+                                { left: 0, top: "50%", transform: "translate(-50%,-50%)" };
+            return (
+              <div key={`lock-${key}`} style={{ position: "absolute", left: px, top: py, width: TILE_PX, height: TILE_PX, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", ...edgeStyle, fontSize: 14, zIndex: 15, background: "rgba(10,5,5,0.9)", borderRadius: 4, padding: "1px 2px", lineHeight: 1 }}>🔒</div>
               </div>
             );
           })}
@@ -1191,6 +1212,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
+  const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
@@ -1617,9 +1639,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         }
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-locked-door") {
-        // Still write drawn_tiles even for flavor-only cards
+        // Lock a random door on the current tile that connects to a neighbor
+        const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
+        const activeDoors = (["north","east","south","west"] as const).filter(dir => {
+          if (!curTile?.doors[dir]) return false;
+          const dx = dir === "east" ? 1 : dir === "west" ? -1 : 0;
+          const dy = dir === "south" ? 1 : dir === "north" ? -1 : 0;
+          return !!gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x + dx && t.y === myState.y + dy);
+        });
+        const chosenDir = activeDoors.length > 0
+          ? activeDoors[Math.floor(Math.random() * activeDoors.length)]
+          : null;
+        if (chosenDir) {
+          const lockKey = `${myState.floor},${myState.x},${myState.y},${chosenDir}`;
+          patch.locked_doors = [...new Set([...(gs.locked_doors ?? []), lockKey])];
+          newLog.push(addLog("system", `Locked Door: the ${chosenDir} exit of this room is sealed 🔒 (Might 4+ or Skeleton Key to open)`));
+        } else {
+          newLog.push(addLog("system", `Locked Door: no connected exits to seal in this room`));
+        }
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
-        newLog.push(addLog("system", `Locked Door: one exit in this room is sealed (Might 4+ or Skeleton Key to open)`));
       } else {
         // Fallback: still persist drawn_tiles
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1653,6 +1691,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     if (attackTotal > defendTotal) {
       winner = "attacker";
       damage = attackTotal - defendTotal;
+      // Axe: if attacker rolled 4+ total, deal +1 bonus damage
+      if ((myState.items ?? []).includes("axe") && attackTotal >= 4) damage += 1;
       const newMight = Math.max(0, targetState.might - damage);
       newPlayerStates[targetId] = {
         ...targetState,
@@ -1833,6 +1873,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         />
       )}
 
+      {/* Item card viewer (tap item chip to inspect) */}
+      {viewingItemCard && (
+        <CardOverlay cardId={viewingItemCard} lang={lang} onDismiss={() => setViewingItemCard(null)} />
+      )}
+
       {/* Death popup */}
       {showDeathPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.85)" }}>
@@ -1950,6 +1995,33 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           className="flex-shrink-0 lg:w-80 xl:w-96 flex flex-col gap-3 p-3 overflow-y-auto border-t lg:border-t-0 lg:border-l max-h-[48vh] lg:max-h-none"
           style={{ borderColor: "rgba(212,175,55,0.08)" }}
         >
+          {/* Haunt scenario guide — always visible during haunt */}
+          {gs.phase === "haunt" && gs.haunt_number != null && (() => {
+            const scenario = getHaunt(gs.haunt_number);
+            if (!scenario) return null;
+            const isTraitor = myState?.is_traitor ?? false;
+            const accent = isTraitor ? "#ef4444" : "#22c55e";
+            const bg     = isTraitor ? "rgba(239,68,68,0.06)" : "rgba(34,197,94,0.06)";
+            const border = isTraitor ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.18)";
+            const powers = isTraitor ? scenario.traitorPowers : scenario.heroPowers;
+            const objective = isTraitor ? scenario.traitorObjective : scenario.heroObjective;
+            return (
+              <div className="flex-shrink-0 rounded-xl p-3 space-y-2 text-xs" style={{ background: bg, border: `1px solid ${border}` }}>
+                <p className="font-black uppercase tracking-widest" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
+                  {isTraitor ? "⚔" : "🕯"} Haunt #{gs.haunt_number} — {scenario.name}
+                </p>
+                <p style={{ color: "#c8b89a" }}><span className="font-bold">Goal: </span>{objective}</p>
+                {powers && powers.length > 0 && (
+                  <ul className="space-y-1 pl-2">
+                    {powers.map((p, i) => (
+                      <li key={i} style={{ color: "#7a6a5a" }}>• {p}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Phase indicator */}
           <div className="flex-shrink-0 flex items-center justify-between">
             <span className="text-xs tracking-widest uppercase" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
@@ -2008,6 +2080,27 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     🔫 Revolver
                   </button>
                 )}
+                {/* Garden escape — hero on garden tile during haunt can attempt Speed 4+ */}
+                {gs.phase === "haunt" && isMyTurn && !myState?.is_traitor && gs.turn_phase === "action" && (() => {
+                  const onGarden = myState && gs.placed_tiles.find(t =>
+                    t.tile_id === "garden" && t.floor === myState.floor && t.x === myState.x && t.y === myState.y
+                  );
+                  if (!onGarden) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        const rolls = rollDice(Math.max(1, myState!.speed));
+                        const total = rolls.reduce((a, b) => a + b, 0);
+                        setDiceResult({ values: rolls, label: total >= 4
+                          ? `🏃 Escape Roll — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
+                          : `🏃 Escape Roll — ${total} < 4. Not fast enough — try again next turn.` });
+                      }}
+                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      🏃 Attempt Escape (Speed 4+)
+                    </button>
+                  );
+                })()}
               </div>
 
               {showAttackTargets && (
@@ -2098,12 +2191,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     const item = getCard(itemId);
                     const isConsumable = itemId === "healing-salve" || itemId === "smelling-salts";
                     return item ? (
-                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
-                        style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
+                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
+                        style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}
+                        onClick={() => setViewingItemCard(itemId)}>
                         {item.name}
                         {isConsumable && isMyTurn && (
                           <button
-                            onClick={() => handleUseItem(itemId)}
+                            onClick={(e) => { e.stopPropagation(); handleUseItem(itemId); }}
                             className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold"
                             style={{ background: "rgba(245,158,11,0.25)", color: "#fcd34d", fontSize: "0.65rem" }}>
                             Use
