@@ -42,6 +42,15 @@ interface Props {
   myPlayerId: string | null;
 }
 
+// ---------- Ring distance label ----------
+function ringLabel(d: number): { text: string; color: string } {
+  if (d === 0) return { text: "🎯 Bull's-eye!", color: "#d4af37" };
+  if (d <= 2)  return { text: "Ring 1",         color: "#22c55e" };
+  if (d <= 4)  return { text: "Ring 2",         color: "#f59e0b" };
+  if (d <= 6)  return { text: "Ring 3",         color: "#6366f1" };
+  return               { text: "Miss",           color: "#5a4a3a" };
+}
+
 // ---------- Browser warning ----------
 function ChromeWarning({ lang }: { lang: "en" | "th" }) {
   const [show, setShow] = useState(false);
@@ -101,6 +110,8 @@ function ColorGrid({
   const currentCueGiverId = gs.cue_giver_order[(gs.round - 1) % gs.cue_giver_order.length];
   const amICueGiver = myPlayerId === currentCueGiverId;
   const myGuess = myPlayerId ? gs.guesses[myPlayerId] : null;
+  const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null);
+  const myPinColor = PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length];
 
   return (
     <div className="w-full select-none">
@@ -166,10 +177,13 @@ function ColorGrid({
                   ? players.filter((p) => gs.guesses[p.id]?.x === x && gs.guesses[p.id]?.y === y)
                   : [];
 
+                const isHovered = canGuess && hoverCell?.x === x && hoverCell?.y === y;
                 return (
                   <div
                     key={`${x}-${y}`}
                     onClick={() => canGuess && onGuess(x, y)}
+                    onMouseEnter={() => canGuess && setHoverCell({ x, y })}
+                    onMouseLeave={() => setHoverCell(null)}
                     className={`relative flex items-center justify-center ${canGuess ? "cursor-pointer" : ""}`}
                     style={{
                       backgroundColor: color,
@@ -177,9 +191,11 @@ function ColorGrid({
                         ? "2px solid rgba(255,255,255,0.95)"
                         : isCueGiverTarget
                         ? "2px dashed rgba(255,255,255,0.8)"
+                        : isHovered
+                        ? "2px solid rgba(255,255,255,0.5)"
                         : undefined,
                       outlineOffset: "-1px",
-                      zIndex: isTarget || isCueGiverTarget ? 1 : undefined,
+                      zIndex: isTarget || isCueGiverTarget || isHovered ? 1 : undefined,
                     }}
                   >
                     {isCueGiverTarget && (
@@ -201,6 +217,17 @@ function ColorGrid({
                           height: "60%",
                           backgroundColor:
                             PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length],
+                        }}
+                      />
+                    )}
+                    {isHovered && !isMyGuess && (
+                      <div
+                        className="rounded-full border border-white/60 shadow-sm pointer-events-none"
+                        style={{
+                          width: "55%",
+                          height: "55%",
+                          backgroundColor: myPinColor,
+                          opacity: 0.45,
                         }}
                       />
                     )}
@@ -252,8 +279,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [clueInput, setClueInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  // H&C has no audio system yet — pass null to suppress playback
-  useAmbientAudio(null);
+  const { muted, toggleMute } = useAmbientAudio("/audio/ambient-lobby.mp3");
 
   const gs = dbSession.game_state;
   const phase = dbSession.phase;
@@ -410,6 +436,13 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const HeaderRight = () => (
     <div className="flex items-center gap-2">
       <button
+        onClick={toggleMute}
+        className="btn-gothic-secondary px-2.5 py-1.5 rounded-lg text-sm flex-shrink-0"
+        title={muted ? "Unmute" : "Mute"}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+      <button
         onClick={() => setLang(lang === "en" ? "th" : "en")}
         className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"
       >
@@ -486,9 +519,22 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             )}
           </div>
 
-          <Link href="/" className="btn-gothic-primary w-full py-4 rounded-xl font-bold text-lg text-center no-underline block" style={{ fontFamily: "var(--font-gothic)" }}>
-            ⚔ {t.playAgain}
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/session/create?game=hues-and-cues"
+              className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold text-lg text-center no-underline block"
+              style={{ fontFamily: "var(--font-gothic)" }}
+            >
+              🎨 {t.playAgain}
+            </Link>
+            <Link
+              href="/"
+              className="btn-gothic-secondary px-5 py-4 rounded-xl font-bold text-base text-center no-underline flex-shrink-0"
+              style={{ fontFamily: "var(--font-gothic)" }}
+            >
+              {t.back}
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -590,6 +636,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 {p.name}
                 {isCueGiver && " 🎨"}
                 {hasGuessed && !isCueGiver && " ✓"}
+                <span style={{ color: "#3a2a1a", marginLeft: "2px" }}>· {gs.scores[p.id] ?? 0}</span>
               </div>
             );
           })}
@@ -602,11 +649,11 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
           <div className="gothic-card rounded-2xl p-4">
             <div className="flex items-center gap-3 mb-3">
               <div
-                className="w-10 h-10 rounded-xl border-2 shadow-lg flex-shrink-0"
+                className="w-16 h-16 rounded-xl border-2 shadow-lg flex-shrink-0"
                 style={{
                   backgroundColor: getColor(gs.target.x, gs.target.y),
                   borderColor: "rgba(212,175,55,0.6)",
-                  boxShadow: `0 0 20px ${getColor(gs.target.x, gs.target.y)}60`,
+                  boxShadow: `0 0 24px ${getColor(gs.target.x, gs.target.y)}80`,
                 }}
               />
               <div>
@@ -670,23 +717,28 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               )}
             </div>
             {gs.clues.length < 2 && (
-              <div className="flex gap-2">
-                <input
-                  value={clueInput}
-                  onChange={(e) => setClueInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submitClue()}
-                  placeholder={t.cluePlaceholder}
-                  maxLength={30}
-                  className="flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none"
-                  style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.2)", color: "#e8d5b0" }}
-                />
-                <button
-                  onClick={submitClue}
-                  disabled={!clueInput.trim() || submitting}
-                  className="btn-gothic-secondary px-3 py-2 rounded-xl text-xs whitespace-nowrap disabled:opacity-40"
-                >
-                  {t.addSecondClue}
-                </button>
+              <div>
+                <p className="text-xs mb-1.5" style={{ color: "#5a4a3a" }}>
+                  {lang === "en" ? "Optional 2nd clue:" : "Clue ที่ 2 (ไม่บังคับ):"}
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={clueInput}
+                    onChange={(e) => setClueInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitClue()}
+                    placeholder={t.cluePlaceholder}
+                    maxLength={30}
+                    className="flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none"
+                    style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.2)", color: "#e8d5b0" }}
+                  />
+                  <button
+                    onClick={submitClue}
+                    disabled={!clueInput.trim() || submitting}
+                    className="btn-gothic-secondary px-3 py-2 rounded-xl text-xs whitespace-nowrap disabled:opacity-40"
+                  >
+                    {lang === "en" ? "Add Clue 2" : "ส่ง"}
+                  </button>
+                </div>
               </div>
             )}
             <button
@@ -716,6 +768,13 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: myPinColor }} />
                 <span className="text-xs" style={{ color: "#5a4a3a" }}>your pin</span>
               </div>
+            )}
+            {allGuessed && (
+              <p className="text-xs mt-2 pt-2" style={{ color: "#5a9a5a", borderTop: "1px solid rgba(90,154,90,0.2)" }}>
+                ✓ {t.allGuessedAuto} — {lang === "en" ? "Waiting for" : "รอ"}{" "}
+                <span style={{ color: "#e8d5b0" }}>{cueGiver?.name}</span>{" "}
+                {lang === "en" ? "to reveal..." : "เฉลย..."}
+              </p>
             )}
           </div>
         )}
@@ -751,6 +810,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 const dist = guess ? manhattan(guess, gs.target) : null;
                 const isCueGiver = p.id === currentCueGiverId;
                 const pinColor = PIN_COLORS[players.indexOf(p) % PIN_COLORS.length];
+                const rl = dist !== null ? ringLabel(dist) : null;
                 return (
                   <div
                     key={p.id}
@@ -766,9 +826,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                     <span className="flex-1 truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#a08060" }}>
                       {p.name}{isCueGiver ? " 🎨" : ""}
                     </span>
-                    {!isCueGiver && dist !== null && (
-                      <span className="text-xs px-1 py-0.5 rounded" style={{ background: "rgba(45,27,78,0.6)", color: "#7a6a5a" }}>
-                        d={dist}
+                    {!isCueGiver && rl !== null && (
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: "rgba(45,27,78,0.6)", color: rl.color }}>
+                        {rl.text}
                       </span>
                     )}
                     <span className="text-xs flex-shrink-0" style={{ color: "#5a4a3a" }}>
@@ -785,7 +845,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               })}
             </div>
 
-            {(amICueGiver || isHost) && (
+            {(amICueGiver || isHost) ? (
               <button
                 onClick={nextRound}
                 className="btn-gothic-primary w-full py-3 rounded-xl font-bold"
@@ -793,6 +853,13 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               >
                 {isLastRound ? t.endGame : t.nextRound}
               </button>
+            ) : (
+              <p className="text-center text-xs italic py-2" style={{ color: "#5a4a3a" }}>
+                {lang === "en"
+                  ? <>Waiting for <span style={{ color: "#a08060" }}>{cueGiver?.name}</span> to start the next round…</>
+                  : <>รอ <span style={{ color: "#a08060" }}>{cueGiver?.name}</span> เริ่มรอบถัดไป…</>
+                }
+              </p>
             )}
           </div>
         )}

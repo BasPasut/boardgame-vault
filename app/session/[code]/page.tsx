@@ -11,14 +11,15 @@ import { FIRST_SHADOWS_ROLES, getRoleById, getRolesByType } from "@/lib/games/sh
 import { assignRoles, getRoleCounts } from "@/lib/games/shadows-over-thornwick/scripts";
 import { supabase } from "@/lib/supabase";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
-import { HnCPlaying, type HnCGameState } from "./HnCPlaying";
-import BetrayalPlaying from "./BetrayalPlaying";
 import { GRID_COLS, GRID_ROWS } from "@/lib/games/hues-and-cues/colors";
 import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
 import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, shuffle } from "@/lib/games/betrayal/data/cards";
 import { buildStartingTiles } from "@/lib/games/betrayal/logic/mapEngine";
 import { buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import type { Player, GamePhase, Role } from "@/types/game";
+import { GAME_REGISTRY } from "@/lib/games/registry";
+import { PLAYING_COMPONENTS } from "./gameRegistry";
+import type { HnCGameState } from "./HnCPlaying";
 import { Suspense } from "react";
 
 // ---------- Icons ----------
@@ -371,6 +372,7 @@ function SessionRoom() {
   const [showQR, setShowQR] = useState(false);
   const [showMyRole, setShowMyRole] = useState(false);
   const [hncScoreToWin, setHncScoreToWin] = useState(25);
+  const [confirmWinner, setConfirmWinner] = useState<"good" | "evil" | null>(null);
 
   // Betrayal character selections (stored in game_state.character_selections)
   const betrayalCharSelections: Record<string, string> =
@@ -380,13 +382,9 @@ function SessionRoom() {
   const myBetrayalCharId = myPlayerId ? betrayalCharSelections[myPlayerId] ?? null : null;
 
   // ── Player-limit enforcement ─────────────────────────────────────────────
-  // Max includes the host/storyteller slot. New joiners are blocked at capacity.
-  const GAME_PLAYER_LIMITS: Record<string, number> = {
-    "shadows-over-thornwick": 16,          // 1 storyteller + up to 15 players
-    "hues-and-cues": 10,
-    "betrayal-at-house-on-the-hill": 6,
-  };
-  const maxPlayers = dbSession ? (GAME_PLAYER_LIMITS[dbSession.game_id] ?? 20) : 20;
+  const maxPlayers = dbSession
+    ? (GAME_REGISTRY[dbSession.game_id]?.maxPlayers ?? 20)
+    : 20;
   const isRoomFull = players.length >= maxPlayers;
 
   // Derived
@@ -411,20 +409,10 @@ function SessionRoom() {
       )
     : [];
 
-  // Per-game audio source — BetrayalPlaying handles its own in-game tracks,
-  // so page.tsx only plays Betrayal audio during the lobby phase.
-  const GAMES_WITH_AUDIO = ["shadows-over-thornwick", "betrayal-at-house-on-the-hill"];
-  const hasAudio = GAMES_WITH_AUDIO.includes(dbSession?.game_id ?? "shadows-over-thornwick");
-  const audioSrc = (() => {
-    if (!hasAudio) return null;
-    if (dbSession?.game_id === "betrayal-at-house-on-the-hill") {
-      // Only play lobby track here; exploring/haunt handled inside BetrayalPlaying
-      return phase === "lobby" ? "/audio/betrayal/lobby.mp3" : null;
-    }
-    if (phase === "night") return "/audio/ambient-night.mp3";
-    if (phase === "day")   return "/audio/ambient-day.mp3";
-    return "/audio/ambient-lobby.mp3";
-  })();
+  // Audio: each game's config declares which src to play per phase.
+  // Playing components manage their own audio independently.
+  const audioSrc = GAME_REGISTRY[dbSession?.game_id ?? ""]?.audio.forPhase(phase) ?? null;
+  const hasAudio = audioSrc !== null;
   const { muted, toggleMute } = useAmbientAudio(audioSrc);
 
   const assignedRoleIds = new Set(Object.values(roleAssignments));
@@ -442,28 +430,14 @@ function SessionRoom() {
       return aN - bN;
     });
 
-  // Per-game lobby strings — add new games here
-  const GAME_LOBBY_META: Record<string, { en: { lobby: string; lobbySubtitle: string; hostLabel: string; waitingForHost: string; loadingText: string }; th: { lobby: string; lobbySubtitle: string; hostLabel: string; waitingForHost: string; loadingText: string } }> = {
-    "shadows-over-thornwick": {
-      en: { lobby: "The Village Awaits", lobbySubtitle: "Share the code with your friends to join", hostLabel: "Storyteller", waitingForHost: "Waiting for the Storyteller...", loadingText: "Entering Thornwick..." },
-      th: { lobby: "หมู่บ้านรอคอย", lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม", hostLabel: "Storyteller", waitingForHost: "รอ Storyteller...", loadingText: "กำลังเข้าสู่ธอร์นวิค..." },
-    },
-    "hues-and-cues": {
-      en: { lobby: "Color Room Ready", lobbySubtitle: "Share the code with your friends to join", hostLabel: "Host", waitingForHost: "Waiting for the Host to start...", loadingText: "Loading room..." },
-      th: { lobby: "ห้องสีพร้อมแล้ว", lobbySubtitle: "แชร์รหัสให้เพื่อนเพื่อเข้าร่วม", hostLabel: "Host", waitingForHost: "รอ Host เริ่มเกม...", loadingText: "กำลังโหลดห้อง..." },
-    },
-    "betrayal-at-house-on-the-hill": {
-      en: { lobby: "The Mansion Awaits", lobbySubtitle: "Choose your character and enter the house", hostLabel: "Host", waitingForHost: "Waiting for the Host to start...", loadingText: "Entering the mansion..." },
-      th: { lobby: "คฤหาสน์รอคอย", lobbySubtitle: "เลือกตัวละครและเข้าสู่คฤหาสน์", hostLabel: "Host", waitingForHost: "รอ Host เริ่มเกม...", loadingText: "กำลังเข้าสู่คฤหาสน์..." },
-    },
-  };
   const gameId = dbSession?.game_id ?? "shadows-over-thornwick";
-  const gameMeta = (GAME_LOBBY_META[gameId] ?? GAME_LOBBY_META["shadows-over-thornwick"])[lang];
+  const gameConfig = GAME_REGISTRY[gameId] ?? GAME_REGISTRY["shadows-over-thornwick"];
+  const gameMeta = gameConfig.lobby[lang];
 
   const t = {
     en: {
-      lobby: gameMeta.lobby,
-      lobbySubtitle: gameMeta.lobbySubtitle,
+      lobby: gameMeta.title,
+      lobbySubtitle: gameMeta.subtitle,
       hostLabel: gameMeta.hostLabel,
       waitingForHost: gameMeta.waitingForHost,
       yourName: "Your Name",
@@ -505,8 +479,8 @@ function SessionRoom() {
       playAgain: "Play Again",
     },
     th: {
-      lobby: gameMeta.lobby,
-      lobbySubtitle: gameMeta.lobbySubtitle,
+      lobby: gameMeta.title,
+      lobbySubtitle: gameMeta.subtitle,
       hostLabel: gameMeta.hostLabel,
       waitingForHost: gameMeta.waitingForHost,
       yourName: "ชื่อของคุณ",
@@ -844,29 +818,23 @@ function SessionRoom() {
     );
   }
 
-  // ---------- BETRAYAL PLAYING / ENDED ----------
-  if (dbSession?.game_id === "betrayal-at-house-on-the-hill" && (phase === "playing" || phase === "ended")) {
-    return (
-      <BetrayalPlaying
-        code={code}
-        dbSession={dbSession as unknown as Parameters<typeof BetrayalPlaying>[0]["dbSession"]}
-        players={players}
-        myPlayerId={myPlayerId}
-        isHost={isHost}
-      />
-    );
-  }
-
-  // ---------- HnC PLAYING / ENDED ----------
-  if (dbSession?.game_id === "hues-and-cues" && (phase === "playing" || phase === "ended")) {
-    return (
-      <HnCPlaying
-        code={code}
-        dbSession={dbSession as unknown as Parameters<typeof HnCPlaying>[0]["dbSession"]}
-        players={players}
-        myPlayerId={myPlayerId}
-      />
-    );
+  // ---------- GAME DISPATCH (registry-driven) ----------
+  // When a game owns this phase, delegate fully to its PlayingComponent.
+  // To add a new game: register it in lib/games/registry.ts + app/session/[code]/gameRegistry.ts.
+  {
+    const PlayingComponent = dbSession ? PLAYING_COMPONENTS[dbSession.game_id] : undefined;
+    const cfg = dbSession ? GAME_REGISTRY[dbSession.game_id] : undefined;
+    if (PlayingComponent && cfg?.ownedPhases.includes(phase)) {
+      return (
+        <PlayingComponent
+          code={code}
+          dbSession={dbSession}
+          players={players}
+          myPlayerId={myPlayerId}
+          isHost={isHost}
+        />
+      );
+    }
   }
 
   // ---------- LOBBY ----------
@@ -1003,25 +971,28 @@ function SessionRoom() {
                         cursor: isSelectedByOther ? "not-allowed" : "pointer",
                       }}
                     >
-                      {/* Character image placeholder */}
-                      <div className="w-full aspect-square rounded-lg mb-2 overflow-hidden flex items-center justify-center"
-                        style={{ background: "rgba(13,10,26,0.6)" }}>
-                        <span className="text-3xl">
-                          {char.id === "father-karras" ? "✝️" :
-                           char.id === "professor-ashwood" ? "📚" :
-                           char.id === "lady-blackwood" ? "🌹" :
-                           char.id === "sergeant-cole" ? "🎖️" :
-                           char.id === "mrs-holloway" ? "🗝️" : "🔮"}
-                        </span>
+                      {/* Character portrait */}
+                      <div className="w-full aspect-square rounded-lg mb-2 overflow-hidden relative"
+                        style={{ background: "rgba(13,10,26,0.8)" }}>
+                        <img
+                          src={char.image}
+                          alt={char.name}
+                          className="w-full h-full object-cover object-top"
+                          style={{ filter: isSelectedByOther ? "grayscale(1)" : "none" }}
+                        />
+                        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)" }} />
+                        {isSelectedByMe && (
+                          <div className="absolute inset-0 pointer-events-none rounded-lg" style={{ boxShadow: "inset 0 0 0 2px rgba(212,175,55,0.8), 0 0 16px rgba(212,175,55,0.3)" }} />
+                        )}
                       </div>
-                      <div className="text-xs font-bold leading-tight mb-1" style={{ color: isSelectedByMe ? "#d4af37" : "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                      <div className="text-xs font-bold leading-tight mb-0.5" style={{ color: isSelectedByMe ? "#d4af37" : "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
                         {char.name}
                       </div>
                       <div className="text-xs leading-tight" style={{ color: "#7a6a5a" }}>
-                        SPD {char.speed} · MGT {char.might}
+                        ⚡{char.speed} ⚔{char.might} ◈{char.sanity} 📖{char.knowledge}
                       </div>
-                      <div className="text-xs leading-tight" style={{ color: "#7a6a5a" }}>
-                        SAN {char.sanity} · KNW {char.knowledge}
+                      <div className="text-xs italic leading-tight mt-1 line-clamp-2" style={{ color: "#4a3a2a" }}>
+                        {char.trait}
                       </div>
                       {isSelectedByMe && (
                         <div className="absolute top-1.5 right-1.5 text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(212,175,55,0.25)", color: "#d4af37" }}>✓</div>
@@ -1310,30 +1281,44 @@ function SessionRoom() {
               const bluffId = gs?.bluff_assignments?.[foolPid];
               const bluffRole = bluffId ? getRoleById(bluffId) : null;
               return (
-                <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(120,80,200,0.15)", border: "1px solid rgba(120,80,200,0.4)" }}>
-                  <div className="text-xs tracking-widest uppercase mb-2" style={{ color: "#c0a0ff", fontFamily: "var(--font-gothic)" }}>
-                    {lang === "en" ? "Fool's Bluff Role" : "บทบาทปลอมของ Fool"}
+                <div className="mb-4 rounded-xl overflow-hidden" style={{ background: "rgba(120,80,200,0.12)", border: "1px solid rgba(120,80,200,0.4)" }}>
+                  <div className="px-4 pt-3 pb-2 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(120,80,200,0.2)" }}>
+                    <span className="text-base">🃏</span>
+                    <span className="text-xs tracking-widest uppercase" style={{ color: "#c0a0ff", fontFamily: "var(--font-gothic)" }}>
+                      {lang === "en" ? "Fool's Bluff Role" : "บทบาทปลอมของ Fool"}
+                    </span>
                   </div>
-                  <div className="text-sm mb-2" style={{ color: "#a08060" }}>
-                    {foolPlayer?.name} {lang === "en" ? "will see:" : "จะเห็น:"}
-                    <span className="ml-1 font-medium" style={{ color: "#80b0ff" }}>{bluffRole?.name[lang] ?? "—"}</span>
+                  <div className="px-4 py-3">
+                    <p className="text-xs mb-2" style={{ color: "#7a6a5a" }}>
+                      <span style={{ color: "#a08060" }}>{foolPlayer?.name}</span>{" "}
+                      {lang === "en" ? "will think they are:" : "จะคิดว่าตัวเองคือ:"}
+                    </p>
+                    {bluffRole && (
+                      <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg" style={{ background: "rgba(120,80,200,0.2)", border: "1px solid rgba(120,80,200,0.3)" }}>
+                        <span className="text-lg">✨</span>
+                        <div>
+                          <span className="font-bold text-sm" style={{ color: "#c0d0ff", fontFamily: "var(--font-gothic)" }}>{bluffRole.name[lang]}</span>
+                          <span className="text-xs ml-2" style={{ color: "#6a7aaa" }}>{bluffRole.type}</span>
+                        </div>
+                      </div>
+                    )}
+                    <select
+                      value={bluffId ?? ""}
+                      onChange={async (e) => {
+                        if (!gs || !e.target.value) return;
+                        await supabase.from("sessions").update({
+                          game_state: { ...gs, bluff_assignments: { ...(gs.bluff_assignments ?? {}), [foolPid]: e.target.value } },
+                        }).eq("code", code);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none appearance-none"
+                      style={{ background: "rgba(13,10,26,0.9)", border: "1px solid rgba(120,80,200,0.5)", color: "#e8d5b0", fontFamily: "var(--font-gothic)", cursor: "pointer" }}
+                    >
+                      <option value="">{lang === "en" ? "— pick a bluff role —" : "— เลือกบทบาทปลอม —"}</option>
+                      {getRolesByType("townsfolk").map(r => (
+                        <option key={r.id} value={r.id}>{r.name[lang]}</option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={bluffId ?? ""}
-                    onChange={async (e) => {
-                      if (!gs || !e.target.value) return;
-                      await supabase.from("sessions").update({
-                        game_state: { ...gs, bluff_assignments: { ...(gs.bluff_assignments ?? {}), [foolPid]: e.target.value } },
-                      }).eq("code", code);
-                    }}
-                    className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
-                    style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(120,80,200,0.4)", color: "#e8d5b0" }}
-                  >
-                    <option value="">{lang === "en" ? "— pick a bluff —" : "— เลือกบทบาทปลอม —"}</option>
-                    {getRolesByType("townsfolk").map(r => (
-                      <option key={r.id} value={r.id}>{r.name[lang]}</option>
-                    ))}
-                  </select>
                 </div>
               );
             })()}
@@ -1402,10 +1387,10 @@ function SessionRoom() {
               <div className="gothic-card rounded-xl p-4">
                 <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
                 <div className="flex gap-2">
-                  <button onClick={() => declareWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
+                  <button onClick={() => setConfirmWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
                     ☀️ {t.goodWins}
                   </button>
-                  <button onClick={() => declareWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
+                  <button onClick={() => setConfirmWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
                     😈 {t.evilWins}
                   </button>
                 </div>
@@ -1416,6 +1401,34 @@ function SessionRoom() {
           )}
         </div>
         {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
+        {confirmWinner && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+            <div className="gothic-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
+              <div className="text-5xl mb-3">{confirmWinner === "good" ? "☀️" : "😈"}</div>
+              <h3 className="text-xl font-black mb-1" style={{ fontFamily: "var(--font-gothic)", color: confirmWinner === "good" ? "#80b0ff" : "#ff8080" }}>
+                {confirmWinner === "good" ? t.goodWins : t.evilWins}
+              </h3>
+              <p className="text-sm mb-5" style={{ color: "#7a6a5a" }}>
+                {lang === "en" ? "End the game and reveal all roles?" : "จบเกมและเปิดเผยบทบาทของทุกคน?"}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmWinner(null)}
+                  className="btn-gothic-secondary flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                >
+                  {lang === "en" ? "Cancel" : "ยกเลิก"}
+                </button>
+                <button
+                  onClick={() => { declareWinner(confirmWinner); setConfirmWinner(null); }}
+                  className="btn-gothic-primary flex-1 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: confirmWinner === "good" ? "rgba(74,111,165,0.6)" : undefined, borderColor: confirmWinner === "good" ? "rgba(74,111,165,0.8)" : undefined }}
+                >
+                  {lang === "en" ? "Confirm" : "ยืนยัน"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
@@ -1472,20 +1485,84 @@ function SessionRoom() {
               <div className="gothic-card rounded-xl p-4 mt-3">
                 <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
                 <div className="flex gap-2">
-                  <button onClick={() => declareWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
+                  <button onClick={() => setConfirmWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
                     ☀️ {t.goodWins}
                   </button>
-                  <button onClick={() => declareWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
+                  <button onClick={() => setConfirmWinner("evil")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(139,26,26,0.3)", border: "1px solid rgba(139,26,26,0.5)", color: "#ff8080" }}>
                     😈 {t.evilWins}
                   </button>
                 </div>
               </div>
             </>
           ) : (
-            <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
+            /* Non-host night view: atmospheric waiting screen with role reminder */
+            <div className="space-y-4">
+              {/* Atmospheric moon card */}
+              <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(0,5,16,0.7)", border: "1px solid rgba(212,175,55,0.1)" }}>
+                <div className="text-6xl mb-3" style={{ filter: "drop-shadow(0 0 16px rgba(212,175,55,0.4))" }}>🌕</div>
+                <p className="text-lg italic mb-1" style={{ color: "#7a6a5a", fontFamily: "var(--font-gothic)" }}>
+                  {lang === "en" ? "Close your eyes…" : "หลับตา..."}
+                </p>
+                <p className="text-xs" style={{ color: "#3a2a1a" }}>
+                  {lang === "en" ? "The Storyteller will wake you when it's your turn." : "Storyteller จะปลุกคุณเมื่อถึงคราว"}
+                </p>
+              </div>
+
+              {/* Role reminder */}
+              {myRole && (
+                <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "rgba(45,27,78,0.4)", border: "1px solid rgba(212,175,55,0.15)" }}>
+                  <div className="text-2xl flex-shrink-0">{myRole.team === "evil" ? "😈" : "✨"}</div>
+                  <div className="min-w-0">
+                    <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+                      {lang === "en" ? "Your role" : "บทบาทของคุณ"}
+                    </p>
+                    <p className="font-bold truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                      {myRole.name[lang]}
+                    </p>
+                    {myRole.ability && (
+                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#7a6a5a" }}>
+                        {typeof myRole.ability === "object" ? myRole.ability[lang] : myRole.ability}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => setShowMyRole(true)} className="btn-gothic-secondary px-2.5 py-1.5 rounded-lg text-xs flex-shrink-0 ml-auto">
+                    🎴
+                  </button>
+                </div>
+              )}
+
+              <p className="text-center text-xs italic py-2" style={{ color: "#3a2a1a" }}>
+                {t.waitingForHost}
+              </p>
+            </div>
           )}
         </div>
         {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
+        {confirmWinner && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+            <div className="gothic-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
+              <div className="text-5xl mb-3">{confirmWinner === "good" ? "☀️" : "😈"}</div>
+              <h3 className="text-xl font-black mb-1" style={{ fontFamily: "var(--font-gothic)", color: confirmWinner === "good" ? "#80b0ff" : "#ff8080" }}>
+                {confirmWinner === "good" ? t.goodWins : t.evilWins}
+              </h3>
+              <p className="text-sm mb-5" style={{ color: "#7a6a5a" }}>
+                {lang === "en" ? "End the game and reveal all roles?" : "จบเกมและเปิดเผยบทบาทของทุกคน?"}
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmWinner(null)} className="btn-gothic-secondary flex-1 py-2.5 rounded-xl text-sm font-semibold">
+                  {lang === "en" ? "Cancel" : "ยกเลิก"}
+                </button>
+                <button
+                  onClick={() => { declareWinner(confirmWinner); setConfirmWinner(null); }}
+                  className="btn-gothic-primary flex-1 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: confirmWinner === "good" ? "rgba(74,111,165,0.6)" : undefined, borderColor: confirmWinner === "good" ? "rgba(74,111,165,0.8)" : undefined }}
+                >
+                  {lang === "en" ? "Confirm" : "ยืนยัน"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <ChatPanel myPlayerId={myPlayerId} isHost={isHost} players={players} allMessages={messages} chatOpen={chatOpen} setChatOpen={setChatOpen} chatTarget={chatTarget} setChatTarget={setChatTarget} chatInput={chatInput} setChatInput={setChatInput} unreadCount={unreadCount} setUnreadCount={setUnreadCount} visibleMessages={visibleMessages} messagesEndRef={messagesEndRef} lang={lang} onSend={sendMessage} />
       </div>
     );
@@ -1576,9 +1653,22 @@ function SessionRoom() {
             </div>
           </div>
 
-          <Link href="/" className="btn-gothic-primary w-full py-4 rounded-xl font-bold text-lg text-center no-underline block" style={{ fontFamily: "var(--font-gothic)" }}>
-            ⚔ {t.playAgain}
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/session/create?game=shadows-over-thornwick"
+              className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold text-lg text-center no-underline block"
+              style={{ fontFamily: "var(--font-gothic)" }}
+            >
+              ⚔ {t.playAgain}
+            </Link>
+            <Link
+              href="/"
+              className="btn-gothic-secondary px-5 py-4 rounded-xl font-bold text-base text-center no-underline flex-shrink-0"
+              style={{ fontFamily: "var(--font-gothic)" }}
+            >
+              {t.back}
+            </Link>
+          </div>
         </div>
       </div>
     );

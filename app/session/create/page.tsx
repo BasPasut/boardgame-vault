@@ -3,74 +3,30 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { generateSessionCode, generatePlayerId } from "@/lib/utils/session";
 import { getLang, saveLang } from "@/lib/utils/lang";
 import { supabase } from "@/lib/supabase";
-import { Suspense } from "react";
+import { ORDERED_GAMES } from "@/lib/games/registry";
+import type { Language } from "@/types/game";
 
-const GAMES = [
-  { id: "shadows-over-thornwick", name: { en: "Shadows Over Thornwick", th: "Shadows Over Thornwick" }, players: "5–15", available: true },
-  { id: "hues-and-cues", name: { en: "Hues & Cues", th: "Hues & Cues" }, players: "3–10", available: true },
-  { id: "betrayal-at-house-on-the-hill", name: { en: "Betrayal at House on the Hill", th: "Betrayal at House on the Hill" }, players: "3–6", available: true },
-  { id: "werewolf", name: { en: "Werewolf", th: "หมาป่า" }, players: "6–20", available: false },
-  { id: "secret-hitler", name: { en: "Secret Hitler", th: "ซีเคร็ต ฮิตเลอร์" }, players: "5–10", available: false },
-];
-
-// Initial game_state shape per game — each game owns its own structure
-const INITIAL_GAME_STATE: Record<string, object> = {
-  "shadows-over-thornwick": {
-    script_id: "the-first-shadows",
-    day_number: 1,
-    night_index: 0,
-    role_assignments: {},
-  },
-  "hues-and-cues": {
-    round: 0,
-    total_rounds: 0,
-    score_to_win: 25,
-    cue_giver_order: [],
-    target: { x: 0, y: 0 },
-    clues: [],
-    sub_phase: "giving-clue",
-    guesses: {},
-    scores: {},
-  },
-  "betrayal-at-house-on-the-hill": {
-    phase: "explore",
-    haunt_number: null,
-    traitor_id: null,
-    winner: null,
-    placed_tiles: [],
-    remaining_tiles: { 0: [], 1: [], 2: [] },
-    item_deck: [],
-    omen_deck: [],
-    event_deck: [],
-    item_discard: [],
-    omen_discard: [],
-    event_discard: [],
-    omen_count: 0,
-    turn_order: [],
-    current_turn_index: 0,
-    turn_phase: "move",
-    moves_used: 0,
-    player_states: {},
-    event_log: [],
-    haunt_objectives: null,
-    pending_card: null,
-  },
-};
+// ORDERED_GAMES is sorted: available first, then coming-soon.
+// Adding a new game: update lib/games/registry.ts only — nothing here changes.
 
 function CreateSessionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const defaultGame = searchParams.get("game") ?? "shadows-over-thornwick";
 
-  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
-  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
+  const [lang, setLangState] = useState<Language>(() => getLang());
+  const setLang = (l: Language) => { setLangState(l); saveLang(l); };
+
+  const defaultGame = searchParams.get("game") ?? ORDERED_GAMES.find(g => g.available)?.id ?? "";
   const [name, setName] = useState("");
   const [selectedGame, setSelectedGame] = useState(defaultGame);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const selectedConfig = ORDERED_GAMES.find(g => g.id === selectedGame);
 
   const t = {
     en: {
@@ -78,7 +34,7 @@ function CreateSessionForm() {
       title: "Create Session",
       subtitle: "Set up your game room",
       selectGame: "Select Game",
-      yourName: (selectedGame === "hues-and-cues" || selectedGame === "betrayal-at-house-on-the-hill") ? "Your Name (Host)" : "Your Name (Storyteller)",
+      yourName: `Your Name (${selectedConfig?.lobby.en.hostLabel ?? "Host"})`,
       namePlaceholder: "Enter your name...",
       create: "Create Room",
       creating: "Creating...",
@@ -90,7 +46,7 @@ function CreateSessionForm() {
       title: "สร้างห้อง",
       subtitle: "ตั้งค่าห้องเกมของคุณ",
       selectGame: "เลือกเกม",
-      yourName: (selectedGame === "hues-and-cues" || selectedGame === "betrayal-at-house-on-the-hill") ? "ชื่อของคุณ (Host)" : "ชื่อของคุณ (Storyteller)",
+      yourName: `ชื่อของคุณ (${selectedConfig?.lobby.th.hostLabel ?? "Host"})`,
       namePlaceholder: "ใส่ชื่อของคุณ...",
       create: "สร้างห้อง",
       creating: "กำลังสร้าง...",
@@ -100,7 +56,9 @@ function CreateSessionForm() {
   }[lang];
 
   const handleCreate = async () => {
-    if (!name.trim() || !selectedGame) return;
+    const config = ORDERED_GAMES.find(g => g.id === selectedGame);
+    if (!name.trim() || !config?.available) return;
+
     setLoading(true);
     setError("");
 
@@ -111,7 +69,7 @@ function CreateSessionForm() {
       code,
       game_id: selectedGame,
       phase: "lobby",
-      game_state: INITIAL_GAME_STATE[selectedGame] ?? {},
+      game_state: config.initialState(),   // ← comes from the game's own config
     });
 
     if (sessionErr) {
@@ -145,7 +103,9 @@ function CreateSessionForm() {
         <div className="flex items-center justify-between mb-10">
           <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
           <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">
-            <span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span>
+            <span style={{ color: lang === "en" ? "#d4af37" : "#5a4a3a" }}>EN</span>
+            <span style={{ color: "#3a2a1a" }}> / </span>
+            <span style={{ color: lang === "th" ? "#d4af37" : "#5a4a3a" }}>TH</span>
           </button>
         </div>
 
@@ -155,12 +115,13 @@ function CreateSessionForm() {
         </div>
 
         <div className="gothic-card rounded-2xl p-8 space-y-8">
+          {/* Game selector — auto-populated from GAME_REGISTRY */}
           <div>
             <label className="block text-sm font-medium mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.selectGame}
             </label>
             <div className="space-y-3">
-              {GAMES.map((game) => (
+              {ORDERED_GAMES.map((game) => (
                 <button
                   key={game.id}
                   onClick={() => game.available && setSelectedGame(game.id)}
@@ -174,11 +135,17 @@ function CreateSessionForm() {
                   }`}
                 >
                   <div>
-                    <div className="font-medium" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{game.name[lang]}</div>
-                    <div className="text-xs mt-0.5" style={{ color: "#5a4a3a" }}>{game.players} players</div>
+                    <div className="font-medium" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                      {game.name[lang]}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: "#5a4a3a" }}>
+                      {game.minPlayers}–{game.maxPlayers} players · {game.estimatedTime}
+                    </div>
                   </div>
                   {!game.available && (
-                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>{t.comingSoon}</span>
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
+                      {t.comingSoon}
+                    </span>
                   )}
                   {selectedGame === game.id && <span className="text-yellow-400">✓</span>}
                 </button>
@@ -186,6 +153,7 @@ function CreateSessionForm() {
             </div>
           </div>
 
+          {/* Host name */}
           <div>
             <label className="block text-sm font-medium mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.yourName}
@@ -205,7 +173,7 @@ function CreateSessionForm() {
 
           <button
             onClick={handleCreate}
-            disabled={!name.trim() || loading}
+            disabled={!name.trim() || loading || !selectedConfig?.available}
             className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ fontFamily: "var(--font-gothic)" }}
           >

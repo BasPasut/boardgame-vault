@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getLang } from "@/lib/utils/lang";
 import { useAmbientAudio, useSfx } from "@/lib/hooks/useAmbientAudio";
@@ -50,9 +51,23 @@ const PLAYER_COLORS = [
 
 function playerColor(index: number) { return PLAYER_COLORS[index % PLAYER_COLORS.length]; }
 
-function rollDice(n: number): number[] {
-  return Array.from({ length: n }, () => Math.floor(Math.random() * 3)); // 0-2, sum=haunt dice
+/**
+ * Betrayal's custom 8-sided dice have only 3 pip values:
+ *   0 → 2 faces (25%)   1 → 3 faces (37.5%)   2 → 3 faces (37.5%)
+ * Mean per die = 9/8 = 1.125  (NOT 1.0 from uniform 0-2)
+ */
+function rollOneBetrayalDie(): number {
+  const r = Math.random();
+  if (r < 2 / 8) return 0; // 25%
+  if (r < 5 / 8) return 1; // 37.5%
+  return 2;                 // 37.5%
 }
+function rollDice(n: number): number[] {
+  return Array.from({ length: n }, rollOneBetrayalDie);
+}
+
+/** Same weighted distribution — used for animation frame randomisation */
+function randomBetrayalFace(): number { return rollOneBetrayalDie(); }
 function rollD6(n: number): number {
   let sum = 0;
   for (let i = 0; i < n; i++) sum += Math.floor(Math.random() * 6) + 1;
@@ -184,6 +199,21 @@ function MansionMap({
 }) {
   const [viewFloor, setViewFloor] = useState<Floor>(myState?.floor ?? 1);
   const [newTileKey, setNewTileKey] = useState<string>("");
+  const [zoom, setZoom] = useState(1.0);
+
+  // Auto-clear the "new tile" highlight after animation finishes
+  useEffect(() => {
+    if (!newTileKey) return;
+    const t = setTimeout(() => setNewTileKey(""), 700);
+    return () => clearTimeout(t);
+  }, [newTileKey]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom((z) => Math.max(0.45, Math.min(2.5, z - e.deltaY * 0.0012)));
+    }
+  }, []);
 
   const floorTiles = gs.placed_tiles.filter((t) => t.floor === viewFloor);
 
@@ -235,30 +265,53 @@ function MansionMap({
 
   return (
     <div className="flex flex-col gap-2 flex-1 min-h-0">
-      {/* Floor tabs */}
-      <div className="flex gap-1.5">
-        {([2, 1, 0] as Floor[]).map((f) => (
-          <button key={f} onClick={() => setViewFloor(f)}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            style={{
-              background: viewFloor === f ? "rgba(212,175,55,0.2)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${viewFloor === f ? "rgba(212,175,55,0.5)" : "rgba(255,255,255,0.08)"}`,
-              color: viewFloor === f ? "#d4af37" : "#5a4a3a",
-              fontFamily: "var(--font-gothic)",
-            }}>
-            {FLOOR_NAMES[f]}
-            {myState?.floor === f && <span className="ml-1 text-yellow-400">●</span>}
-          </button>
-        ))}
+      {/* Floor tabs + zoom controls */}
+      <div className="flex items-center gap-1.5">
+        <div className="flex gap-1 flex-1 flex-wrap">
+          {([2, 1, 0] as Floor[]).map((f) => (
+            <button key={f} onClick={() => setViewFloor(f)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              style={{
+                background: viewFloor === f ? "rgba(212,175,55,0.2)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${viewFloor === f ? "rgba(212,175,55,0.5)" : "rgba(255,255,255,0.08)"}`,
+                color: viewFloor === f ? "#d4af37" : "#5a4a3a",
+                fontFamily: "var(--font-gothic)",
+              }}>
+              {FLOOR_NAMES[f]}
+              {myState?.floor === f && <span className="ml-1 text-yellow-400">●</span>}
+            </button>
+          ))}
+        </div>
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setZoom((z) => Math.max(0.45, +(z - 0.15).toFixed(2)))}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7a6a5a" }}
+            title="Zoom out"
+          >−</button>
+          <button
+            onClick={() => setZoom(1)}
+            className="text-xs px-1.5 py-1 rounded-lg min-w-[3.2rem] text-center transition-colors"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", color: "#5a4a3a" }}
+            title="Reset zoom"
+          >{Math.round(zoom * 100)}%</button>
+          <button
+            onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7a6a5a" }}
+            title="Zoom in"
+          >+</button>
+        </div>
       </div>
 
       {/* Map viewport — capped on mobile, fills column on desktop */}
-      <div className="rounded-xl overflow-auto flex-1 min-h-0 max-h-[52vh] lg:max-h-none" style={{
+      <div className="rounded-xl overflow-auto flex-1 min-h-0 max-h-[52vh] lg:max-h-none" onWheel={handleWheel} style={{
         background: FLOOR_COLORS[viewFloor],
         border: "1px solid rgba(212,175,55,0.15)",
         minHeight: 200,
       }}>
-        <div className="relative" style={{ width: worldW, height: worldH, minWidth: "100%" }}>
+        <div className="relative" style={{ width: worldW, height: worldH, minWidth: "100%", zoom: zoom }}>
           {/* Placed tiles */}
           {floorTiles.map((tile) => {
             const px = (tile.x - minX) * TILE_PX;
@@ -482,21 +535,53 @@ const DICE_FACES = [
   "/images/games/betrayal/dice-2.png",
 ];
 
-function GothicDie({ value }: { value: number }) {
-  const [err, setErr] = useState(false);
+function GothicDie({ value, rolling }: { value: number; rolling?: boolean }) {
+  const [err, setErr]         = useState(false);
+  const [display, setDisplay] = useState<number>(() => rolling ? randomBetrayalFace() : value);
+  const [spinning, setSpinning] = useState(!!rolling);
+
+  useEffect(() => {
+    if (!rolling) {
+      setDisplay(value);
+      setSpinning(false);
+      return;
+    }
+    setSpinning(true);
+    let count = 0;
+    const id = setInterval(() => {
+      count++;
+      if (count < 12) {
+        setDisplay(randomBetrayalFace());
+      } else {
+        clearInterval(id);
+        setDisplay(value);
+        setSpinning(false);
+      }
+    }, 65);
+    return () => clearInterval(id);
+  }, [value, rolling]);
+
   return (
-    <div className="relative w-16 h-16 rounded-xl flex items-center justify-center"
-      style={{ background: "rgba(212,175,55,0.12)", border: "2px solid rgba(212,175,55,0.45)" }}>
+    <div
+      className={`relative w-16 h-16 rounded-xl flex items-center justify-center select-none ${spinning ? "animate-dice-shake" : ""}`}
+      style={{
+        background: "rgba(212,175,55,0.12)",
+        border: `2px solid ${spinning ? "rgba(212,175,55,0.7)" : "rgba(212,175,55,0.45)"}`,
+        transition: "border-color 0.3s",
+        boxShadow: spinning ? "0 0 12px rgba(212,175,55,0.25)" : undefined,
+      }}
+    >
       {!err ? (
         <img
-          src={DICE_FACES[value]}
-          alt={String(value)}
+          src={DICE_FACES[display]}
+          alt={String(display)}
           className="w-12 h-12 object-contain"
+          style={{ transition: "none" }}
           onError={() => setErr(true)}
         />
       ) : (
         <span className="text-2xl font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-          {value}
+          {display}
         </span>
       )}
     </div>
@@ -504,20 +589,29 @@ function GothicDie({ value }: { value: number }) {
 }
 
 function DiceOverlay({ values, label, onDismiss }: { values: number[]; label: string; onDismiss: () => void }) {
+  const [rolling, setRolling] = useState(true);
   const total = values.reduce((a, b) => a + b, 0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setRolling(false), 900);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.82)" }} onClick={onDismiss}>
-      <div className="text-center space-y-5 rounded-2xl p-8"
+      style={{ background: "rgba(0,0,0,0.82)" }} onClick={rolling ? undefined : onDismiss}>
+      <div className="text-center space-y-5 rounded-2xl p-8 animate-slide-up"
         style={{ background: "rgba(8,5,12,0.95)", border: "1px solid rgba(212,175,55,0.2)", backdropFilter: "blur(8px)" }}>
         <p className="text-xs uppercase tracking-widest" style={{ color: "#5a4a3a" }}>{label}</p>
         <div className="flex gap-4 justify-center">
-          {values.map((v, i) => <GothicDie key={i} value={v} />)}
+          {values.map((v, i) => <GothicDie key={i} value={v} rolling={rolling} />)}
         </div>
-        <p className="text-4xl font-black" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+        <p className="text-4xl font-black transition-all duration-300" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)", opacity: rolling ? 0 : 1 }}>
           {total}
         </p>
-        <p className="text-xs" style={{ color: "#5a4a3a" }}>Tap anywhere to continue</p>
+        <p className="text-xs transition-opacity duration-300" style={{ color: "#5a4a3a", opacity: rolling ? 0 : 1 }}>
+          Tap anywhere to continue
+        </p>
       </div>
     </div>
   );
@@ -534,6 +628,12 @@ interface CombatResultData {
 }
 
 function CombatOverlay({ result, onDismiss }: { result: CombatResultData; onDismiss: () => void }) {
+  const [rolling, setRolling] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setRolling(false), 1100);
+    return () => clearTimeout(t);
+  }, []);
+
   const attackTotal = result.attackerRolls.reduce((a, b) => a + b, 0);
   const defendTotal = result.defenderRolls.reduce((a, b) => a + b, 0);
   const winnerColor = result.winner === "tie" ? "#d4af37" : result.winner === "attacker" ? "#ef4444" : "#22c55e";
@@ -542,8 +642,8 @@ function CombatOverlay({ result, onDismiss }: { result: CombatResultData; onDism
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.88)" }} onClick={onDismiss}>
-      <div className="max-w-sm w-full rounded-2xl p-6 space-y-5 text-center"
+      style={{ background: "rgba(0,0,0,0.88)" }} onClick={rolling ? undefined : onDismiss}>
+      <div className="max-w-sm w-full rounded-2xl p-6 space-y-5 text-center animate-slide-up"
         style={{ background: "rgba(8,5,12,0.97)", border: "1px solid rgba(239,68,68,0.25)", backdropFilter: "blur(8px)" }}
         onClick={(e) => e.stopPropagation()}>
 
@@ -558,25 +658,25 @@ function CombatOverlay({ result, onDismiss }: { result: CombatResultData; onDism
             <div className="flex flex-wrap gap-1 justify-center min-h-[4rem]">
               {result.attackerRolls.length === 0
                 ? <span className="text-xs self-center" style={{ color: "#5a4a3a" }}>—</span>
-                : result.attackerRolls.map((v, i) => <GothicDie key={i} value={v} />)
+                : result.attackerRolls.map((v, i) => <GothicDie key={i} value={v} rolling={rolling} />)
               }
             </div>
-            <p className="text-3xl font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{attackTotal}</p>
+            <p className="text-3xl font-black transition-opacity duration-300" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)", opacity: rolling ? 0 : 1 }}>{attackTotal}</p>
           </div>
           <div className="space-y-2">
             <p className="text-xs font-bold truncate" style={{ color: "#e8d5b0" }}>{result.targetName}</p>
             <div className="flex flex-wrap gap-1 justify-center min-h-[4rem]">
               {result.defenderRolls.length === 0
                 ? <span className="text-xs self-center" style={{ color: "#5a4a3a" }}>—</span>
-                : result.defenderRolls.map((v, i) => <GothicDie key={i} value={v} />)
+                : result.defenderRolls.map((v, i) => <GothicDie key={i} value={v} rolling={rolling} />)
               }
             </div>
-            <p className="text-3xl font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{defendTotal}</p>
+            <p className="text-3xl font-black transition-opacity duration-300" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)", opacity: rolling ? 0 : 1 }}>{defendTotal}</p>
           </div>
         </div>
 
-        {/* Result banner */}
-        <div className="rounded-xl px-4 py-3" style={{ background: winnerBg, border: `1px solid ${winnerBorder}` }}>
+        {/* Result banner — hidden until dice settle */}
+        <div className="rounded-xl px-4 py-3 transition-opacity duration-300" style={{ background: winnerBg, border: `1px solid ${winnerBorder}`, opacity: rolling ? 0 : 1 }}>
           {result.winner === "tie" && (
             <p className="text-sm font-bold" style={{ color: winnerColor }}>Draw — no damage dealt</p>
           )}
@@ -595,9 +695,9 @@ function CombatOverlay({ result, onDismiss }: { result: CombatResultData; onDism
           )}
         </div>
 
-        <button onClick={onDismiss}
-          className="w-full py-2.5 rounded-xl text-sm font-bold"
-          style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.25)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+        <button onClick={onDismiss} disabled={rolling}
+          className="w-full py-2.5 rounded-xl text-sm font-bold transition-opacity"
+          style={{ opacity: rolling ? 0.3 : 1, background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.25)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
           Continue
         </button>
       </div>
@@ -826,6 +926,113 @@ function BetrayalChat({
         </div>
       )}
     </>
+  );
+}
+
+// ─── Victory Screen ───────────────────────────────────────────────────────────
+function VictoryScreen({
+  gs, players, myPlayerId,
+}: {
+  gs: BetrayalGameState;
+  players: Player[];
+  myPlayerId: string | null;
+}) {
+  const heroesWin = gs.winner === "heroes";
+  const myState = myPlayerId ? gs.player_states[myPlayerId] : null;
+  const iWon = heroesWin ? !myState?.is_traitor : !!myState?.is_traitor;
+  const accent = heroesWin ? "#d4af37" : "#ef4444";
+  const accentBg = heroesWin ? "rgba(212,175,55,0.08)" : "rgba(239,68,68,0.1)";
+  const accentBorder = heroesWin ? "rgba(212,175,55,0.3)" : "rgba(239,68,68,0.35)";
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+      style={{ background: "radial-gradient(ellipse at 50% 30%, #1a0808 0%, #0a0708 70%)" }}>
+      {/* Atmospheric glow */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{
+          background: heroesWin
+            ? "radial-gradient(ellipse at 50% 20%, rgba(212,175,55,0.07) 0%, transparent 60%)"
+            : "radial-gradient(ellipse at 50% 20%, rgba(139,26,26,0.12) 0%, transparent 60%)",
+        }} />
+
+      <div className="relative z-10 max-w-md w-full space-y-6 animate-slide-up">
+        {/* Icon */}
+        <div className="text-center">
+          <div className="text-7xl mb-4 animate-victory-pulse inline-block">
+            {heroesWin ? "🕯️" : "⚔️"}
+          </div>
+          <h1 className="text-4xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: accent }}>
+            {heroesWin ? "The Heroes Prevail" : "The Traitor Triumphs"}
+          </h1>
+          <p className="text-base" style={{ color: "#7a6a5a" }}>
+            {heroesWin ? "Darkness has been banished from the mansion." : "The mansion claims its prize. None shall leave."}
+          </p>
+        </div>
+
+        {/* Personal result */}
+        {myPlayerId && (
+          <div className="rounded-xl p-4 text-center" style={{ background: iWon ? accentBg : "rgba(0,0,0,0.3)", border: `1px solid ${iWon ? accentBorder : "rgba(255,255,255,0.06)"}` }}>
+            <p className="font-bold text-lg" style={{ fontFamily: "var(--font-gothic)", color: iWon ? accent : "#5a4a3a" }}>
+              {iWon ? "⚔ Victory is yours" : "💀 You were defeated"}
+            </p>
+            {myState?.is_traitor && (
+              <p className="text-xs mt-1" style={{ color: "#7a6a5a" }}>You were the Traitor</p>
+            )}
+          </div>
+        )}
+
+        {/* All players recap */}
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="px-4 py-2" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+              Final Standings
+            </p>
+          </div>
+          {players.map((p, idx) => {
+            const ps = gs.player_states[p.id];
+            const ch = ps ? getCharacter(ps.character_id) : null;
+            if (!ps) return null;
+            const survived = !ps.is_dead;
+            return (
+              <div key={p.id} className="flex items-center gap-3 px-4 py-2.5"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", opacity: survived ? 1 : 0.5 }}>
+                {ch ? (
+                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0"
+                    style={{ border: `2px solid ${ps.is_dead ? "#374151" : playerColor(idx)}` }}>
+                    <img src={ch.image} alt={ch.name} className="w-full h-full object-cover object-top" />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-white"
+                    style={{ background: ps.is_dead ? "#374151" : playerColor(idx), fontSize: 11 }}>
+                    {ps.is_dead ? "✝" : p.name[0]}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: survived ? "#e8d5b0" : "#5a4a3a" }}>
+                    {p.name}
+                    {p.id === myPlayerId && <span className="text-xs ml-1" style={{ color: "#4a3a2a" }}>(you)</span>}
+                  </p>
+                  {ch && <p className="text-xs truncate" style={{ color: "#5a4a3a" }}>{ch.name}</p>}
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {ps.is_traitor && (
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}>Traitor</span>
+                  )}
+                  {ps.is_dead && (
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#5a4a3a" }}>Eliminated</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <Link href="/" className="block w-full text-center btn-gothic-primary py-4 rounded-xl text-lg font-bold no-underline"
+          style={{ fontFamily: "var(--font-gothic)" }}>
+          ← Return to Vault
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -1139,6 +1346,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   }, [gs, code]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  // Victory screen — shown when session or game phase is ended
+  if (dbSession.phase === "ended" || gs.winner) {
+    return <VictoryScreen gs={gs} players={players} myPlayerId={myPlayerId} />;
+  }
+
   const myObjective = gs.haunt_objectives
     ? myState?.is_traitor
       ? gs.haunt_objectives.traitor
@@ -1326,7 +1539,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{myChar.name}</p>
-                  <p className="text-xs italic truncate" style={{ color: "#5a4a3a" }}>{myChar.trait}</p>
+                  <p className="text-xs italic leading-snug line-clamp-3" style={{ color: "#5a4a3a" }}>{myChar.trait}</p>
                 </div>
                 {myState.is_traitor && (
                   <span className="ml-auto flex-shrink-0 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}>Traitor</span>
