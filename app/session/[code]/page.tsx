@@ -852,7 +852,7 @@ function SessionRoom() {
   if (phase === "lobby") {
     return (
       <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url('/images/platform/bg-vault-door.png')", backgroundSize: "cover", backgroundPosition: "center" }} />
+        <div className="fixed inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "url('/images/platform/bg-vault-door.png')", backgroundSize: "cover", backgroundPosition: "center" }} />
         <div className="relative z-10 max-w-2xl mx-auto px-6 py-10">
           <div className="flex items-center justify-between mb-8">
             <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
