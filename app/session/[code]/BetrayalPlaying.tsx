@@ -1589,12 +1589,27 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         const newPlayerStates = { ...(patch.player_states ?? gs.player_states) };
         newPlayerStates[traitorId] = { ...newPlayerStates[traitorId], is_traitor: true };
 
+        // Guarantee haunt-required items are findable: bubble them to the top of the item deck
+        const HAUNT_ITEM_MAP: Record<string, string> = {
+          "Holy Symbol": "holy-symbol", "Ancient Book": "ancient-book",
+          "Amulet": "amulet", "Healing Salve": "healing-salve",
+          "Smelling Salts": "smelling-salts", "Axe": "axe", "Rope": "rope",
+          "Candle": "candle", "Lantern": "lantern", "Lucky Coin": "lucky-coin",
+          "Sacrificial Dagger": "sacrificial-dagger", "Knife": "knife",
+        };
+        const hauntText = [haunt.heroObjective, haunt.traitorObjective, ...(haunt.heroPowers ?? []), ...(haunt.traitorPowers ?? [])].join(" ");
+        const neededIds = Object.entries(HAUNT_ITEM_MAP).filter(([label]) => hauntText.includes(label)).map(([, id]) => id);
+        const baseDeck = patch.item_deck ?? gs.item_deck;
+        const priority = neededIds.filter(id => baseDeck.includes(id));
+        const guaranteedDeck = priority.length > 0 ? [...priority, ...baseDeck.filter(id => !priority.includes(id))] : baseDeck;
+
         patch = {
           ...patch,
           phase: "haunt",
           haunt_number: haunt.number,
           traitor_id: traitorId,
           player_states: newPlayerStates,
+          item_deck: guaranteedDeck,
           haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
           event_log: [...newLog, addLog("haunt", `The Haunt begins! "${haunt.name}"`)].slice(-30),
         };
@@ -1778,16 +1793,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         if (didSave) { tps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === targetId)?.name ?? targetId}'s Amulet saved them!`)); }
       }
       newPlayerStates[targetId] = tps;
-      // Sacrificial Dagger costs 1 Sanity per use
-      if (myState.items?.includes("sacrificial-dagger")) {
-        const newSanity = Math.max(0, myState.sanity - 1);
-        let mps = { ...myState, sanity: newSanity, is_dead: isDead(myState.might, newSanity) };
-        if (mps.is_dead) {
-          const { state: saved, saved: didSave } = checkAmulet(mps);
-          if (didSave) { mps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === myPlayerId)?.name ?? "?"}'s Amulet saved them!`)); }
-        }
-        newPlayerStates[myPlayerId!] = mps;
-      }
       if (newPlayerStates[targetId].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else if (defendTotal > attackTotal) {
@@ -1804,6 +1809,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else {
       playSfx("/audio/betrayal/sfx/dice-roll.mp3");
+    }
+
+    // Sacrificial Dagger costs 1 Sanity every time it's used, win or lose
+    if (myState.items?.includes("sacrificial-dagger")) {
+      const base = newPlayerStates[myPlayerId!] ?? myState;
+      const newSanity = Math.max(0, base.sanity - 1);
+      let mps = { ...base, sanity: newSanity, is_dead: isDead(base.might, newSanity) };
+      if (mps.is_dead) {
+        const { state: saved, saved: didSave } = checkAmulet(mps);
+        if (didSave) { mps = saved; newLog2.push(addLog("stat", `${players.find(p => p.id === myPlayerId)?.name ?? "?"}'s Amulet saved them!`)); }
+      }
+      newPlayerStates[myPlayerId!] = mps;
+      newLog2.push(addLog("stat", `Sacrificial Dagger costs ${players.find(p => p.id === myPlayerId)?.name ?? "?"} 1 Sanity`));
     }
 
     const resultMsg =
