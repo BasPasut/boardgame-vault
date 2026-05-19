@@ -97,6 +97,7 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
 function MapTile({
   tile, playersHere, isReachable, isMyPosition, onClick, isNew,
+  myPlayerId, currentPlayerId,
 }: {
   tile: PlacedTile;
   playersHere: { player: Player; index: number; isDead?: boolean }[];
@@ -104,12 +105,17 @@ function MapTile({
   isMyPosition: boolean;
   onClick: () => void;
   isNew: boolean;
+  myPlayerId: string | null;
+  currentPlayerId: string | null;
 }) {
   const def = getTile(tile.tile_id);
   const typeColor = {
     item: "rgba(245,158,11,0.7)", omen: "rgba(239,68,68,0.7)",
     event: "rgba(99,102,241,0.7)", stairwell: "rgba(34,197,94,0.7)", normal: "transparent",
   }[def?.type ?? "normal"];
+
+  const livingHere = playersHere.filter(p => !p.isDead);
+  const hasPlayers = livingHere.length > 0;
 
   return (
     <div
@@ -122,12 +128,20 @@ function MapTile({
           ? "2px solid #d4af37"
           : isReachable
           ? "2px solid rgba(212,175,55,0.5)"
+          : hasPlayers
+          ? "1px solid rgba(255,255,255,0.18)"
           : "1px solid rgba(255,255,255,0.08)",
         borderRadius: 6,
         background: def?.image
           ? `url(${def.image}) center/cover no-repeat`
           : "rgba(30,20,10,0.8)",
-        boxShadow: isReachable ? "0 0 12px rgba(212,175,55,0.3)" : undefined,
+        boxShadow: isMyPosition
+          ? "0 0 14px rgba(212,175,55,0.45)"
+          : isReachable
+          ? "0 0 12px rgba(212,175,55,0.3)"
+          : hasPlayers
+          ? "0 0 8px rgba(255,255,255,0.08)"
+          : undefined,
         overflow: "hidden",
       }}
     >
@@ -142,28 +156,74 @@ function MapTile({
       {tile.doors.east  && <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-l" style={{ background: "rgba(212,175,55,0.6)" }} />}
       {tile.doors.west  && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-r" style={{ background: "rgba(212,175,55,0.6)" }} />}
 
-      {/* Overlay label */}
-      <div className="w-full text-center px-0.5 py-0.5 text-xs leading-tight truncate"
-        style={{ background: "rgba(0,0,0,0.65)", color: "#e8d5b0", fontSize: 9, fontFamily: "var(--font-gothic)" }}>
-        {def?.name ?? tile.tile_id}
-      </div>
+      {/* Player tokens — centered in the tile, above the name bar */}
+      {hasPlayers && (
+        <div className="absolute inset-x-0 flex justify-center items-center gap-0.5 flex-wrap"
+          style={{ top: 4, bottom: 16 }}>
+          {livingHere.slice(0, 4).map(({ player, index }) => {
+            const isMe      = player.id === myPlayerId;
+            const isCurrent = player.id === currentPlayerId;
+            return (
+              <div key={player.id} className="relative flex-shrink-0">
+                {/* Pulse ring for current-turn player */}
+                {isCurrent && (
+                  <div className="absolute -inset-1 rounded-full animate-ping"
+                    style={{ background: playerColor(index), opacity: 0.35 }} />
+                )}
+                <div
+                  className="relative w-5 h-5 rounded-full flex items-center justify-center font-black"
+                  style={{
+                    background: playerColor(index),
+                    fontSize: 9,
+                    color: "#fff",
+                    border: isMe
+                      ? "2px solid #fbbf24"          // gold ring = me
+                      : "2px solid rgba(255,255,255,0.88)",
+                    boxShadow: isMe
+                      ? "0 0 8px rgba(251,191,36,0.85), 0 2px 5px rgba(0,0,0,0.7)"
+                      : "0 2px 5px rgba(0,0,0,0.7)",
+                    letterSpacing: 0,
+                  }}
+                >
+                  {player.name[0].toUpperCase()}
+                </div>
+              </div>
+            );
+          })}
+          {/* "+N more" badge when >4 players on a tile */}
+          {livingHere.length > 4 && (
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+              style={{ background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)", fontSize: 8 }}>
+              +{livingHere.length - 4}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Player tokens */}
-      {playersHere.length > 0 && (
-        <div className="absolute top-1 left-1 flex flex-wrap gap-0.5">
-          {playersHere.slice(0, 4).map(({ player, index, isDead }) => (
-            <div key={player.id} className="w-4 h-4 rounded-full flex items-center justify-center text-white font-bold"
+      {/* Dead player ghosts — small, faded, top-left */}
+      {playersHere.some(p => p.isDead) && (
+        <div className="absolute top-1 left-1 flex gap-0.5">
+          {playersHere.filter(p => p.isDead).slice(0, 2).map(({ player, index }) => (
+            <div key={player.id}
+              className="w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold"
               style={{
-                background: isDead ? "#374151" : playerColor(index),
+                background: "#374151",
                 fontSize: 7,
-                border: "1px solid rgba(0,0,0,0.5)",
-                opacity: isDead ? 0.4 : 1,
+                color: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                opacity: 0.5,
               }}>
-              {isDead ? "✝" : player.name[0].toUpperCase()}
+              ✝
             </div>
           ))}
         </div>
       )}
+
+      {/* Overlay label */}
+      <div className="absolute bottom-0 left-0 right-0 text-center px-0.5 py-0.5 leading-tight truncate"
+        style={{ background: "rgba(0,0,0,0.72)", color: "#e8d5b0", fontSize: 9, fontFamily: "var(--font-gothic)" }}>
+        {def?.name ?? tile.tile_id}
+      </div>
     </div>
   );
 }
