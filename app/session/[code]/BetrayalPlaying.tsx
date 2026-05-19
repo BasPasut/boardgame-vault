@@ -97,7 +97,7 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
 function MapTile({
   tile, playersHere, isReachable, isMyPosition, onClick, isNew,
-  myPlayerId, currentPlayerId,
+  myPlayerId, currentPlayerId, deckCount,
 }: {
   tile: PlacedTile;
   playersHere: { player: Player; index: number; isDead?: boolean }[];
@@ -107,6 +107,7 @@ function MapTile({
   isNew: boolean;
   myPlayerId: string | null;
   currentPlayerId: string | null;
+  deckCount?: number;
 }) {
   const def = getTile(tile.tile_id);
   const typeColor = {
@@ -145,9 +146,17 @@ function MapTile({
         overflow: "hidden",
       }}
     >
-      {/* Type badge */}
+      {/* Type badge + deck count */}
       {def?.type && def.type !== "normal" && (
-        <div className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ background: typeColor }} />
+        <div className="absolute top-1 right-1 flex items-center gap-0.5">
+          {deckCount !== undefined && deckCount > 0 && (
+            <span className="text-white font-bold leading-none px-1 rounded"
+              style={{ fontSize: 7, background: typeColor }}>
+              {deckCount}
+            </span>
+          )}
+          <div className="w-2 h-2 rounded-full" style={{ background: typeColor }} />
+        </div>
       )}
 
       {/* Door indicators */}
@@ -158,8 +167,8 @@ function MapTile({
 
       {/* Player tokens — centered in the tile, above the name bar */}
       {hasPlayers && (
-        <div className="absolute inset-x-0 flex justify-center items-center gap-0.5 flex-wrap"
-          style={{ top: 4, bottom: 16 }}>
+        <div className="absolute inset-x-0 flex justify-center items-center gap-1 flex-wrap"
+          style={{ top: 4, bottom: 18 }}>
           {livingHere.slice(0, 4).map(({ player, index }) => {
             const isMe      = player.id === myPlayerId;
             const isCurrent = player.id === currentPlayerId;
@@ -167,21 +176,21 @@ function MapTile({
               <div key={player.id} className="relative flex-shrink-0">
                 {/* Pulse ring for current-turn player */}
                 {isCurrent && (
-                  <div className="absolute -inset-1 rounded-full animate-ping"
-                    style={{ background: playerColor(index), opacity: 0.35 }} />
+                  <div className="absolute -inset-1.5 rounded-full animate-ping"
+                    style={{ background: playerColor(index), opacity: 0.4 }} />
                 )}
                 <div
-                  className="relative w-5 h-5 rounded-full flex items-center justify-center font-black"
+                  className="relative w-7 h-7 rounded-full flex items-center justify-center font-black"
                   style={{
                     background: playerColor(index),
-                    fontSize: 9,
+                    fontSize: 11,
                     color: "#fff",
                     border: isMe
-                      ? "2px solid #fbbf24"          // gold ring = me
-                      : "2px solid rgba(255,255,255,0.88)",
+                      ? "2px solid #fbbf24"
+                      : "2px solid rgba(255,255,255,0.9)",
                     boxShadow: isMe
-                      ? "0 0 8px rgba(251,191,36,0.85), 0 2px 5px rgba(0,0,0,0.7)"
-                      : "0 2px 5px rgba(0,0,0,0.7)",
+                      ? "0 0 10px rgba(251,191,36,0.9), 0 2px 6px rgba(0,0,0,0.8)"
+                      : "0 2px 6px rgba(0,0,0,0.8)",
                     letterSpacing: 0,
                   }}
                 >
@@ -192,8 +201,8 @@ function MapTile({
           })}
           {/* "+N more" badge when >4 players on a tile */}
           {livingHere.length > 4 && (
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-              style={{ background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)", fontSize: 8 }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+              style={{ background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)", fontSize: 9 }}>
               +{livingHere.length - 4}
             </div>
           )}
@@ -263,6 +272,11 @@ function MansionMap({
   const [newTileKey, setNewTileKey] = useState<string>("");
   const [zoom, setZoom] = useState(1.0);
 
+  // Auto-follow player when they change floors (e.g. via stairwell)
+  useEffect(() => {
+    if (myState?.floor !== undefined) setViewFloor(myState.floor);
+  }, [myState?.floor]);
+
   // Auto-clear the "new tile" highlight after animation finishes
   useEffect(() => {
     if (!newTileKey) return;
@@ -289,23 +303,24 @@ function MansionMap({
   const worldW = (maxX - minX + 1) * TILE_PX;
   const worldH = (maxY - minY + 1) * TILE_PX;
 
-  // Reachable tiles for current player
-  const reachable = useMemo(() => {
-    if (!isMyTurn || !myState || myState.floor !== viewFloor) return new Set<string>();
-    const movesLeft = myState.speed - gs.moves_used;
-    if (movesLeft <= 0 || gs.turn_phase !== "move") return new Set<string>();
-    return getReachable(gs.placed_tiles, viewFloor, myState.x, myState.y, movesLeft);
-  }, [gs, myState, isMyTurn, viewFloor]);
+  const currentPlayerId = gs.turn_order[gs.current_turn_index] ?? null;
 
-  // Unexplored doors
+  // Reachable tiles for current player — includes cross-floor stairwell connections
+  const reachable = useMemo(() => {
+    if (!isMyTurn || !myState || gs.turn_phase !== "move") return new Set<string>();
+    const movesLeft = myState.speed - gs.moves_used;
+    if (movesLeft <= 0) return new Set<string>();
+    return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft);
+  }, [gs, myState, isMyTurn]);
+
+  // Unexplored doors on the viewed floor
   const unexplored = useMemo(() => getUnexploredDoors(gs.placed_tiles, viewFloor), [gs.placed_tiles, viewFloor]);
 
-  // Filter to only doors reachable from current player's position
+  // Only show explorable doors when on the player's own floor
   const explorable = useMemo(() => {
     if (!isMyTurn || !myState || myState.floor !== viewFloor || gs.turn_phase !== "move") return [];
     const movesLeft = myState.speed - gs.moves_used;
     if (movesLeft <= 0) return [];
-    // Can explore if the fromTile is reachable OR is current position
     return unexplored.filter(({ fromTile }) => {
       const key = `${fromTile.floor},${fromTile.x},${fromTile.y}`;
       const isHere = myState.x === fromTile.x && myState.y === fromTile.y;
@@ -324,6 +339,13 @@ function MansionMap({
     });
     return map;
   }, [players, gs.player_states, viewFloor]);
+
+  // Deck count per tile type (so players know how many cards remain)
+  const deckCounts: Record<string, number> = {
+    item: gs.item_deck.length,
+    omen: gs.omen_deck.length,
+    event: gs.event_deck.length,
+  };
 
   return (
     <div className="flex flex-col gap-2 flex-1 min-h-0">
@@ -367,6 +389,20 @@ function MansionMap({
         </div>
       </div>
 
+      {/* Stairwell hint — visible when player is on a stairwell and has moves */}
+      {isMyTurn && myState && gs.turn_phase === "move" && myState.speed - gs.moves_used > 0 && (() => {
+        const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
+        const isOnStairwell = curTile && getTile(curTile.tile_id)?.type === "stairwell";
+        const otherFloors = ([0,1,2] as Floor[]).filter(f => f !== myState.floor && gs.placed_tiles.some(t => t.floor === f && getTile(t.tile_id)?.type === "stairwell"));
+        if (!isOnStairwell || otherFloors.length === 0) return null;
+        return (
+          <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+            style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#22c55e" }}>
+            <span>🪜 On stairwell — switch floor tab to see where you can go</span>
+          </div>
+        );
+      })()}
+
       {/* Map viewport — capped on mobile, fills column on desktop */}
       <div className="rounded-xl overflow-auto flex-1 min-h-0 max-h-[52vh] lg:max-h-none" onWheel={handleWheel} style={{
         background: FLOOR_COLORS[viewFloor],
@@ -380,6 +416,10 @@ function MansionMap({
             const py = (tile.y - minY) * TILE_PX;
             const key = `${viewFloor},${tile.x},${tile.y}`;
             const isMyPos = myState?.floor === viewFloor && myState.x === tile.x && myState.y === tile.y;
+            const tileDef = getTile(tile.tile_id);
+            const dc = tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell"
+              ? deckCounts[tileDef.type]
+              : undefined;
             return (
               <div key={tile.tile_id} style={{ position: "absolute", left: px, top: py }}>
                 <MapTile
@@ -388,8 +428,11 @@ function MansionMap({
                   isReachable={reachable.has(key)}
                   isMyPosition={isMyPos}
                   isNew={`${viewFloor}-${tile.x}-${tile.y}` === newTileKey}
+                  myPlayerId={myPlayerId}
+                  currentPlayerId={currentPlayerId}
+                  deckCount={dc}
                   onClick={() => {
-                    if (reachable.has(key) || isMyPos) onMove(tile.x, tile.y, viewFloor);
+                    if (reachable.has(key)) onMove(tile.x, tile.y, viewFloor);
                   }}
                 />
               </div>
@@ -397,7 +440,7 @@ function MansionMap({
           })}
 
           {/* Unexplored doors */}
-          {unexplored.map(({ x, y, fromTile, direction }) => {
+          {unexplored.map(({ x, y }) => {
             const px = (x - minX) * TILE_PX;
             const py = (y - minY) * TILE_PX;
             const canExp = explorable.some((e) => e.x === x && e.y === y);
@@ -418,9 +461,9 @@ function MansionMap({
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 text-xs" style={{ color: "#5a4a3a" }}>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-1" />Item room</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Omen room</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-indigo-500 mr-1" />Event room</span>
+        <span><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-1" />Item ({gs.item_deck.length})</span>
+        <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Omen ({gs.omen_deck.length})</span>
+        <span><span className="inline-block w-2 h-2 rounded-full bg-indigo-500 mr-1" />Event ({gs.event_deck.length})</span>
         <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Stairwell</span>
         <span>🚪 Explore new room</span>
       </div>
@@ -530,8 +573,8 @@ function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => v
             <NextImage src={card.image} alt={card.name}
               fill priority
               sizes="(max-width: 640px) 100vw, 384px"
-              className="object-cover"
-              style={{ opacity: 0.75 }}
+              className="object-contain"
+              style={{ opacity: 0.85 }}
               onError={() => setImgErr(true)} />
           )}
           {/* Card back (shown before reveal) */}
@@ -540,7 +583,7 @@ function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => v
               alt="card back"
               fill priority
               sizes="(max-width: 640px) 100vw, 384px"
-              className="object-cover"
+              className="object-contain"
               onError={() => setBackErr(true)} />
           )}
           {/* Fallback if no back image */}
@@ -1112,11 +1155,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const gs = dbSession.game_state;
 
-  const { muted, toggleMute } = useAmbientAudio(
-    gs.phase === "haunt"
-      ? "/audio/betrayal/haunt-phase.mp3"
-      : "/audio/betrayal/exploring.mp3",
-  );
+  const audioTrack = gs.winner === "heroes"
+    ? "/audio/betrayal/heroes-win.mp3"
+    : gs.winner === "traitor"
+    ? "/audio/betrayal/traitor-wins.mp3"
+    : gs.phase === "haunt"
+    ? "/audio/betrayal/haunt-phase.mp3"
+    : "/audio/betrayal/exploring.mp3";
+  const { muted, toggleMute } = useAmbientAudio(audioTrack);
   const playSfx = useSfx();
 
   const myIndex = players.findIndex((p) => p.id === myPlayerId);
@@ -1173,7 +1219,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const def = getTile(tile.tile_id);
     const newLog = [...gs.event_log];
 
-    // Cost: 1 move per room
+    // Cost: 1 move per room (cross-floor stairwell counts as 1)
     const newMovesUsed = gs.moves_used + 1;
     const movesLeft = myState.speed - newMovesUsed;
 
@@ -1190,19 +1236,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     newLog.push(addLog("move", `${players.find(p => p.id === myPlayerId)?.name} moved to ${def?.name}`));
     patch.event_log = newLog.slice(-30);
 
-    // Auto-transition to action phase when moves are exhausted
-    if (movesLeft <= 0) {
-      patch.turn_phase = "action";
-    }
+    if (movesLeft <= 0) patch.turn_phase = "action";
 
     playSfx("/audio/betrayal/sfx/footstep.mp3");
     await updateGs(patch);
 
-    // Room card trigger
-    if (def?.type && def.type !== "normal" && def.type !== "stairwell") {
+    // Room card trigger — only once per tile per turn
+    const tileKey = `${floor},${x},${y}`;
+    const alreadyDrawn = (gs.turn_drawn_tiles ?? []).includes(tileKey);
+    if (!alreadyDrawn && def?.type && def.type !== "normal" && def.type !== "stairwell") {
       let cardId: string | null = null;
-      if (def.type === "item" && gs.item_deck.length > 0) cardId = gs.item_deck[0];
-      if (def.type === "omen" && gs.omen_deck.length > 0) cardId = gs.omen_deck[0];
+      if (def.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
+      if (def.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
       if (def.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
       if (cardId) setPendingCard(cardId);
     }
@@ -1219,13 +1264,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const tileId = pool[idx];
     const newPool = pool.filter((_, i) => i !== idx);
 
-    // Figure out required door direction (player must be coming FROM somewhere)
-    // Find which adjacent placed tile has a door toward (x, y)
+    // Figure out required door direction: the new tile must have a door facing TOWARD its placed neighbor.
+    // Adjacent at dy=-1 is NORTH → new tile needs "north" door to connect back.
     const dirs = [
-      { dx: 0, dy: -1, requiredDoor: "south" as const }, // north of target → need south door on new tile
-      { dx: 0, dy: 1,  requiredDoor: "north" as const },
-      { dx: 1, dy: 0,  requiredDoor: "west"  as const },
-      { dx: -1, dy: 0, requiredDoor: "east"  as const },
+      { dx: 0, dy: -1, requiredDoor: "north" as const },
+      { dx: 0, dy: 1,  requiredDoor: "south" as const },
+      { dx: 1, dy: 0,  requiredDoor: "east"  as const },
+      { dx: -1, dy: 0, requiredDoor: "west"  as const },
     ];
     let requiredDoor: "north" | "south" | "east" | "west" = "south";
     for (const { dx, dy, requiredDoor: rd } of dirs) {
@@ -1246,6 +1291,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       [myPlayerId!]: { ...myState, x, y, floor },
     };
 
+    const tileKey = `${floor},${x},${y}`;
+    const newDef = getTile(tileId);
+    const willDrawCard = !!(newDef?.type && newDef.type !== "normal" && newDef.type !== "stairwell");
+    // Pre-mark as drawn so entering again later in the same turn won't re-trigger
+    const newDrawnTiles = willDrawCard
+      ? [...new Set([...(gs.turn_drawn_tiles ?? []), tileKey])]
+      : [...(gs.turn_drawn_tiles ?? [])];
+
     playSfx("/audio/betrayal/sfx/tile-reveal.mp3");
     await updateGs({
       placed_tiles: newTiles,
@@ -1254,7 +1307,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       moves_used: myState.speed, // exploring costs all remaining moves
       turn_phase: "action",
       event_log: newLog.slice(-30),
+      turn_drawn_tiles: newDrawnTiles,
     });
+
+    // Trigger card draw for the newly revealed tile
+    if (willDrawCard) {
+      let cardId: string | null = null;
+      if (newDef!.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
+      if (newDef!.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
+      if (newDef!.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
+      if (cardId) setPendingCard(cardId);
+    }
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
   // ── Draw card (resolve pending card) ─────────────────────────────────────
@@ -1265,24 +1328,61 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
     const newDeck = gs[deckKey].slice(1);
     const newDiscard = [cardId, ...gs[discardKey]];
-    const newLog = [...gs.event_log, addLog("card_draw", `${players.find(p => p.id === myPlayerId)?.name} drew ${getCard(cardId)?.name}`)];
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("card_draw", `${playerName} drew ${getCard(cardId)?.name}`)];
+
+    // Mark this tile as drawn from this turn
+    const tileKey = `${myState.floor},${myState.x},${myState.y}`;
+    const newDrawnTiles = [...new Set([...(gs.turn_drawn_tiles ?? []), tileKey])];
 
     let patch: Partial<BetrayalGameState> = {
       [deckKey]: newDeck,
       [discardKey]: newDiscard,
       event_log: newLog.slice(-30),
+      turn_drawn_tiles: newDrawnTiles,
     };
 
+    // ── Item card ──────────────────────────────────────────────────────────
     if (cardType === "item") {
       playSfx("/audio/betrayal/sfx/item-pickup.mp3");
-      // Add to player inventory
       const newItems = [...(myState.items ?? []), cardId];
       patch.player_states = { ...gs.player_states, [myPlayerId!]: { ...myState, items: newItems } };
     }
 
+    // ── Omen card ──────────────────────────────────────────────────────────
     if (cardType === "omen") {
       playSfx("/audio/betrayal/sfx/omen-draw.mp3");
-      // Haunt roll: roll 2 dice (each 0-2), if sum < omen_count → haunt
+
+      // Apply immediate stat effects for this omen
+      let updatedState = { ...myState };
+      const char = myChar;
+      if (cardId === "omen-candle") {
+        updatedState.knowledge = Math.min(myState.knowledge + 1, char?.knowledgeMax ?? 8);
+      } else if (cardId === "omen-girl") {
+        updatedState.sanity = Math.max(myState.sanity - 1, 0);
+      } else if (cardId === "omen-mask") {
+        updatedState.might = Math.max(myState.might - 1, 0);
+        updatedState.knowledge = Math.min(myState.knowledge + 2, char?.knowledgeMax ?? 8);
+      }
+
+      // omen-skull: all players lose 1 sanity
+      if (cardId === "omen-skull") {
+        const allStates = { ...gs.player_states };
+        for (const pid of Object.keys(allStates)) {
+          allStates[pid] = { ...allStates[pid], sanity: Math.max(allStates[pid].sanity - 1, 0) };
+        }
+        patch.player_states = allStates;
+      } else {
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      }
+
+      // Guard: don't trigger haunt if it already started (race condition prevention)
+      if (gs.phase === "haunt") {
+        await updateGs(patch);
+        setPendingCard(null);
+        return;
+      }
+
       const newOmenCount = gs.omen_count + 1;
       patch.omen_count = newOmenCount;
 
@@ -1290,15 +1390,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       const rollSum = roll.reduce((a, b) => a + b, 0);
 
       if (rollSum < newOmenCount) {
-        // HAUNT BEGINS
         playSfx("/audio/betrayal/sfx/haunt-begin.mp3");
         const currentTile = tileAt(gs.placed_tiles, myState.floor, myState.x, myState.y);
         const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
-        // Pick traitor randomly (not the player who triggered)
-        const eligible = gs.turn_order.filter((id) => id !== myPlayerId && !gs.player_states[id]?.is_dead);
-        const traitorId = eligible[Math.floor(Math.random() * eligible.length)] ?? myPlayerId!;
+        // Pick traitor: exclude triggerer and already-traitors
+        const eligible = gs.turn_order.filter(
+          (id) => id !== myPlayerId && !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor,
+        );
+        const traitorId = eligible.length > 0
+          ? eligible[Math.floor(Math.random() * eligible.length)]
+          : myPlayerId!;
 
-        const newPlayerStates = { ...gs.player_states };
+        const newPlayerStates = { ...(patch.player_states ?? gs.player_states) };
         newPlayerStates[traitorId] = { ...newPlayerStates[traitorId], is_traitor: true };
 
         patch = {
@@ -1312,17 +1415,104 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         };
       } else {
         playSfx("/audio/betrayal/sfx/dice-roll.mp3");
-        setDiceResult({ values: roll, label: `Haunt Roll — needed < ${newOmenCount}, rolled ${rollSum}. Safe.` });
+        setDiceResult({ values: roll, label: `Haunt Roll — need < ${newOmenCount}, rolled ${rollSum}. Safe.` });
       }
     }
 
+    // ── Event card ─────────────────────────────────────────────────────────
     if (cardType === "event") {
       playSfx("/audio/betrayal/sfx/ghost-ambient.mp3");
+      const char = myChar;
+      let updatedState = { ...myState };
+
+      if (cardId === "ev-dark-vision") {
+        const roll = rollDice(2);
+        const total = roll.reduce((a, b) => a + b, 0);
+        if (total >= 4) {
+          updatedState.knowledge = Math.min(myState.knowledge + 1, char?.knowledgeMax ?? 8);
+          newLog.push(addLog("stat", `${playerName} gained +1 Knowledge from Dark Vision (rolled ${total})`));
+        } else {
+          updatedState.sanity = Math.max(myState.sanity - 1, 0);
+          newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Dark Vision (rolled ${total})`));
+        }
+        setDiceResult({ values: roll, label: `Dark Vision — rolled ${total}` });
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      } else if (cardId === "ev-cold-spot") {
+        updatedState.speed = Math.max(myState.speed - 1, 0);
+        newLog.push(addLog("stat", `${playerName} lost 1 Speed from Cold Spot`));
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      } else if (cardId === "ev-writing") {
+        const roll = rollDice(1);
+        const total = roll[0];
+        if (total >= 3 && gs.item_deck.length > 0) {
+          const itemId = gs.item_deck[0];
+          const newItems = [...(myState.items ?? []), itemId];
+          updatedState.items = newItems;
+          patch.item_deck = gs.item_deck.slice(1);
+          patch.item_discard = [itemId, ...gs.item_discard];
+          newLog.push(addLog("stat", `${playerName} found an item from Writing on the Wall (rolled ${total})`));
+        } else if (total < 3) {
+          updatedState.sanity = Math.max(myState.sanity - 1, 0);
+          newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Writing on the Wall (rolled ${total})`));
+        }
+        setDiceResult({ values: roll, label: `Writing on the Wall — rolled ${total}` });
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      } else if (cardId === "ev-portrait") {
+        const floorStates = { ...gs.player_states };
+        for (const pid of Object.keys(floorStates)) {
+          if (floorStates[pid].floor === myState.floor) {
+            floorStates[pid] = { ...floorStates[pid], sanity: Math.max(floorStates[pid].sanity - 1, 0) };
+          }
+        }
+        newLog.push(addLog("stat", `Everyone on floor ${myState.floor} lost 1 Sanity (Screaming Portrait)`));
+        patch.player_states = floorStates;
+      } else if (cardId === "ev-falling") {
+        const roll = rollDice(2);
+        const total = roll.reduce((a, b) => a + b, 0);
+        updatedState.might = Math.max(myState.might - total, 0);
+        updatedState.is_dead = updatedState.might <= 0;
+        newLog.push(addLog("stat", `${playerName} lost ${total} Might from Falling`));
+        setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage` });
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+        else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+      } else if (cardId === "ev-the-smell") {
+        const roll = rollDice(2);
+        const total = roll.reduce((a, b) => a + b, 0);
+        if (total <= 4) {
+          updatedState.might = Math.max(myState.might - 2, 0);
+          updatedState.is_dead = updatedState.might <= 0;
+          newLog.push(addLog("stat", `${playerName} lost 2 Might from The Smell (rolled ${total})`));
+          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+          else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+        } else {
+          newLog.push(addLog("stat", `${playerName} escaped The Smell (rolled ${total})`));
+        }
+        setDiceResult({ values: roll, label: `The Smell — rolled ${total}` });
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      } else if (cardId === "ev-discovery") {
+        // Draw up to 2 item cards; player keeps both (simplified)
+        const drawn: string[] = [];
+        let itemDeck = [...gs.item_deck];
+        for (let i = 0; i < 2 && itemDeck.length > 0; i++) {
+          drawn.push(itemDeck.shift()!);
+        }
+        if (drawn.length > 0) {
+          updatedState.items = [...(myState.items ?? []), ...drawn];
+          patch.item_deck = itemDeck;
+          patch.item_discard = [...drawn, ...gs.item_discard];
+          newLog.push(addLog("stat", `${playerName} discovered ${drawn.length} item(s) from Discovery`));
+        }
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+      } else if (cardId === "ev-locked-door") {
+        newLog.push(addLog("system", `Locked Door: one exit in this room is sealed (Might 4+ or Skeleton Key to open)`));
+      }
+      patch.event_log = newLog.slice(-30);
     }
 
     await updateGs(patch);
     setPendingCard(null);
-  }, [myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+  }, [myState, myChar, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
   // ── Attack ────────────────────────────────────────────────────────────────
   const handleAttack = useCallback(async (targetId: string) => {
@@ -1412,6 +1602,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       current_turn_index: nextIndex,
       turn_phase: "move",
       moves_used: 0,
+      turn_drawn_tiles: [],
     });
   }, [isMyTurn, gs, updateGs]);
 
@@ -1557,6 +1748,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             </span>
           </div>
 
+          {/* Victory declaration — visible to any player during haunt (not just on turn) */}
+          {gs.phase === "haunt" && myState && (
+            <div className="flex-shrink-0 flex gap-2">
+              {myState.is_traitor ? (
+                <button onClick={() => handleDeclareWinner("traitor")}
+                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                  ⚔ Declare Traitor Victory
+                </button>
+              ) : (
+                <button onClick={() => handleDeclareWinner("heroes")}
+                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                  🕯 Declare Heroes Win
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Action bar */}
           {isMyTurn && (
             <div className="flex-shrink-0 flex flex-col gap-2">
@@ -1573,20 +1783,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     className="flex-1 py-2 rounded-xl text-sm font-bold"
                     style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                     ⚔ Attack
-                  </button>
-                )}
-                {gs.phase === "haunt" && myState?.is_traitor && (
-                  <button onClick={() => handleDeclareWinner("traitor")}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
-                    style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}>
-                    Declare Victory
-                  </button>
-                )}
-                {gs.phase === "haunt" && !myState?.is_traitor && (
-                  <button onClick={() => handleDeclareWinner("heroes")}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
-                    style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
-                    Heroes Win
                   </button>
                 )}
               </div>

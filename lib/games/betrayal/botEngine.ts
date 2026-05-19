@@ -78,7 +78,7 @@ function nextTurnGs(gs: BetrayalGameState): BetrayalGameState {
     nextIdx = (nextIdx + 1) % len;
     attempts++;
   }
-  return { ...gs, current_turn_index: nextIdx, turn_phase: "move", moves_used: 0 };
+  return { ...gs, current_turn_index: nextIdx, turn_phase: "move", moves_used: 0, turn_drawn_tiles: [] };
 }
 
 // ─── Inline card resolution ───────────────────────────────────────────────────
@@ -122,52 +122,59 @@ function resolveCardForBot(
     };
   }
 
-  // Omen — haunt roll
+  // Omen — haunt roll (only if haunt hasn't already started)
   if (card.type === "omen") {
-    const newOmenCount = gs.omen_count + 1;
-    patch.omen_count = newOmenCount;
+    if (gs.phase === "haunt") {
+      // Haunt already running — don't re-trigger
+      pushBotLog(`Omen drawn but haunt already started — skipping haunt roll`);
+    } else {
+      const newOmenCount = gs.omen_count + 1;
+      patch.omen_count = newOmenCount;
 
-    const roll    = rollDice(2);
-    const rollSum = roll.reduce((a, b) => a + b, 0);
-    pushBotLog(`Haunt roll: ${rollSum} (need < ${newOmenCount}) → ${rollSum < newOmenCount ? "🩸 HAUNT" : "safe"}`);
+      const roll    = rollDice(2);
+      const rollSum = roll.reduce((a, b) => a + b, 0);
+      pushBotLog(`Haunt roll: ${rollSum} (need < ${newOmenCount}) → ${rollSum < newOmenCount ? "🩸 HAUNT" : "safe"}`);
 
-    if (rollSum < newOmenCount) {
-      const currentTile = tileAt(gs.placed_tiles, botState.floor, botState.x, botState.y);
-      const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
+      if (rollSum < newOmenCount) {
+        const currentTile = tileAt(gs.placed_tiles, botState.floor, botState.x, botState.y);
+        const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
 
-      // Pick a random living human as traitor (bots excluded if possible)
-      const eligible = gs.turn_order.filter(
-        (id) => id !== botId && !id.startsWith("bot-") && !gs.player_states[id]?.is_dead,
-      );
-      const fallback = gs.turn_order.filter(
-        (id) => !gs.player_states[id]?.is_dead,
-      );
-      const traitorId = eligible.length > 0
-        ? eligible[Math.floor(Math.random() * eligible.length)]
-        : fallback[Math.floor(Math.random() * fallback.length)] ?? botId;
+        // Pick a random living human as traitor (bots and already-traitors excluded if possible)
+        const eligible = gs.turn_order.filter(
+          (id) => id !== botId && !id.startsWith("bot-") && !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor,
+        );
+        const fallback = gs.turn_order.filter(
+          (id) => !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor,
+        );
+        const traitorId = eligible.length > 0
+          ? eligible[Math.floor(Math.random() * eligible.length)]
+          : fallback.length > 0
+          ? fallback[Math.floor(Math.random() * fallback.length)]
+          : botId;
 
-      const newPlayerStates = { ...gs.player_states };
-      if (newPlayerStates[traitorId]) {
-        newPlayerStates[traitorId] = {
-          ...(newPlayerStates[traitorId] as PlayerGameState),
-          is_traitor: true,
+        const newPlayerStates = { ...gs.player_states };
+        if (newPlayerStates[traitorId]) {
+          newPlayerStates[traitorId] = {
+            ...(newPlayerStates[traitorId] as PlayerGameState),
+            is_traitor: true,
+          };
+        }
+
+        pushBotLog(`🩸 Haunt "${haunt.name}" begins! Traitor: ${traitorId}`);
+
+        patch = {
+          ...patch,
+          phase:            "haunt",
+          haunt_number:     haunt.number,
+          traitor_id:       traitorId,
+          player_states:    newPlayerStates,
+          haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
+          event_log: [
+            ...(patch.event_log ?? newLog),
+            mkLog("haunt", botId, `The Haunt begins! "${haunt.name}"`),
+          ].slice(-30),
         };
       }
-
-      pushBotLog(`🩸 Haunt "${haunt.name}" begins! Traitor: ${traitorId}`);
-
-      patch = {
-        ...patch,
-        phase:            "haunt",
-        haunt_number:     haunt.number,
-        traitor_id:       traitorId,
-        player_states:    newPlayerStates,
-        haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
-        event_log: [
-          ...(patch.event_log ?? newLog),
-          mkLog("haunt", botId, `The Haunt begins! "${haunt.name}"`),
-        ].slice(-30),
-      };
     }
   }
 
@@ -216,15 +223,13 @@ async function executeBotTurn(
     // ── Explore a new room ──────────────────────────────────────────────────
     const pick = explorableFromHere[Math.floor(Math.random() * explorableFromHere.length)];
     const pool = cur.remaining_tiles[floor];
-    const idx  = Math.floor(Math.random() * pool.length);
-    const tileId = pool[idx];
 
-    // Determine required door direction
+    // Determine required door direction (new tile must have a door facing the neighbor)
     const dirs: { dx: number; dy: number; rd: "north" | "south" | "east" | "west" }[] = [
-      { dx: 0, dy: -1, rd: "south" },
-      { dx: 0, dy:  1, rd: "north" },
-      { dx: 1, dy:  0, rd: "west"  },
-      { dx: -1, dy: 0, rd: "east"  },
+      { dx: 0, dy: -1, rd: "north" },
+      { dx: 0, dy:  1, rd: "south" },
+      { dx: 1, dy:  0, rd: "east"  },
+      { dx: -1, dy: 0, rd: "west"  },
     ];
     let requiredDoor: "north" | "south" | "east" | "west" = "south";
     for (const { dx, dy, rd } of dirs) {
@@ -234,30 +239,46 @@ async function executeBotTurn(
       }
     }
 
-    const placed = buildPlacedTile(tileId, floor, pick.x, pick.y, requiredDoor, botId);
+    // Shuffle pool and try each tile until one fits (prevents infinite no-fit loops)
+    const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+    let placed = null;
+    let chosenIdx = -1;
+    let chosenTileId = "";
+    for (let attempt = 0; attempt < shuffledPool.length; attempt++) {
+      const candidate = shuffledPool[attempt];
+      const result = buildPlacedTile(candidate, floor, pick.x, pick.y, requiredDoor, botId);
+      if (result) {
+        placed = result;
+        chosenTileId = candidate;
+        chosenIdx = pool.indexOf(candidate);
+        break;
+      }
+    }
+
     if (placed) {
-      const tileDef = getTile(tileId);
-      pushBotLog(`${botName}: Discovered "${tileDef?.name ?? tileId}"`);
+      const tileDef = getTile(chosenTileId);
+      pushBotLog(`${botName}: Discovered "${tileDef?.name ?? chosenTileId}"`);
 
       cur = {
         ...cur,
         placed_tiles:    [...cur.placed_tiles, placed],
-        remaining_tiles: { ...cur.remaining_tiles, [floor]: pool.filter((_, i) => i !== idx) },
+        remaining_tiles: { ...cur.remaining_tiles, [floor]: pool.filter((_, i) => i !== chosenIdx) },
         player_states: {
           ...cur.player_states,
           [botId]: { ...botState, x: pick.x, y: pick.y },
         },
         moves_used: botState.speed,
         turn_phase: "action",
+        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("tile_reveal", botId, `🤖 ${botName} discovered "${tileDef?.name}"`),
         ].slice(-30),
       };
       movedBotState = { ...botState, x: pick.x, y: pick.y };
-      landedTileId  = tileId;
+      landedTileId  = chosenTileId;
     }
-    // If buildPlacedTile returned null (couldn't fit), fall through to normal move
+    // If no tile fit, fall through to normal move
   }
 
   if (!landedTileId) {
@@ -267,13 +288,13 @@ async function executeBotTurn(
         const parts = key.split(",").map(Number);
         return { floor: parts[0] as Floor, x: parts[1], y: parts[2] };
       })
-      .filter(({ x, y }) => !(x === botState.x && y === botState.y));
+      .filter(({ floor: f, x, y }) => !(f === botState.floor && x === botState.x && y === botState.y));
 
     if (reachableArr.length > 0) {
       const target  = reachableArr[Math.floor(Math.random() * reachableArr.length)];
       const tile    = tileAt(cur.placed_tiles, target.floor, target.x, target.y);
       const tileDef = getTile(tile?.tile_id ?? "");
-      pushBotLog(`${botName}: Moved to "${tileDef?.name ?? "room"}" (${target.x},${target.y})`);
+      pushBotLog(`${botName}: Moved to "${tileDef?.name ?? "room"}" (${target.x},${target.y}) floor ${target.floor}`);
 
       cur = {
         ...cur,
@@ -283,6 +304,7 @@ async function executeBotTurn(
         },
         moves_used: botState.speed,
         turn_phase: "action",
+        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("move", botId, `🤖 ${botName} moved to "${tileDef?.name}"`),
@@ -291,16 +313,17 @@ async function executeBotTurn(
       movedBotState = { ...botState, x: target.x, y: target.y, floor: target.floor };
       landedTileId  = tile?.tile_id ?? null;
     } else {
-      // Truly stuck — just end turn
-      pushBotLog(`${botName}: Nowhere to move`);
-      cur = { ...cur, turn_phase: "action" };
+      pushBotLog(`${botName}: Nowhere to move — ending turn`);
+      cur = { ...cur, turn_phase: "action", turn_drawn_tiles: [] };
     }
   }
 
-  // ── 2. Auto-draw card from the room (if applicable) ───────────────────────
+  // ── 2. Auto-draw card from the room (once per tile per turn) ─────────────
   if (landedTileId) {
     const tileDef = getTile(landedTileId);
-    if (tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell") {
+    const landedTileKey = `${movedBotState.floor},${movedBotState.x},${movedBotState.y}`;
+    const alreadyDrawn = (cur.turn_drawn_tiles ?? []).includes(landedTileKey);
+    if (!alreadyDrawn && tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell") {
       let cardId: string | null = null;
       if (tileDef.type === "item"  && cur.item_deck.length  > 0) cardId = cur.item_deck[0];
       if (tileDef.type === "omen"  && cur.omen_deck.length  > 0) cardId = cur.omen_deck[0];
@@ -308,8 +331,11 @@ async function executeBotTurn(
 
       if (cardId) {
         cur = resolveCardForBot(cur, cardId, botId, movedBotState, pushBotLog);
-        // Always switch to action after drawing a card
-        cur = { ...cur, turn_phase: "action" };
+        cur = {
+          ...cur,
+          turn_phase: "action",
+          turn_drawn_tiles: [...(cur.turn_drawn_tiles ?? []), landedTileKey],
+        };
       }
     }
   }

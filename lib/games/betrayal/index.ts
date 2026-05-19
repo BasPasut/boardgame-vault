@@ -71,5 +71,6 @@ export const betrayalConfig: GameConfig = {
     event_log: [],
     haunt_objectives: null,
     pending_card: null,
+    turn_drawn_tiles: [],
   }),
 };
