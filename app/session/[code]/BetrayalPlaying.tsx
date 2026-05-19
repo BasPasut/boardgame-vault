@@ -1197,14 +1197,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   // Bot engine — runs silently on host's browser, auto-plays bot turns
   const { botLog, isBotTurn } = useBotEngine({ isHost, gs, players, code });
 
-  // Valid attack targets: living players on the same tile, opposing team
+  // Valid attack targets: living opposing-team players on the same tile
   const validAttackTargets = useMemo(() => {
     if (gs.phase !== "haunt" || !myState || gs.turn_phase !== "action") return [];
     return players.filter((p) => {
       if (p.id === myPlayerId) return false;
       const ps = gs.player_states[p.id];
       if (!ps || ps.is_dead) return false;
-      // Same tile only
+      if (ps.is_traitor === myState.is_traitor) return false; // same team
       return ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
     });
   }, [gs, myState, myPlayerId, players]);
@@ -1586,8 +1586,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       patch.event_log = newLog.slice(-30);
     }
 
-    await updateGs(patch);
     setPendingCard(null);
+    await updateGs(patch);
   }, [myState, myChar, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
   // ── Attack ────────────────────────────────────────────────────────────────
@@ -1689,6 +1689,33 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       moves_used: 0,
     });
   }, [isMyTurn, gs, updateGs]);
+
+  // ── Use item (consumables) ────────────────────────────────────────────────
+  const handleUseItem = useCallback(async (itemId: string) => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const char = myChar;
+    if (!char) return;
+    let updatedState = { ...myState };
+    const newItems = myState.items.filter((id) => id !== itemId);
+    updatedState.items = newItems;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log];
+
+    if (itemId === "healing-salve") {
+      const newMight = Math.min(char.mightMax, myState.might + 2);
+      updatedState.might = newMight;
+      newLog.push(addLog("stat", `${playerName} used Healing Salve (+2 Might)`));
+    } else if (itemId === "smelling-salts") {
+      const newSanity = Math.max(myState.sanity, 2);
+      updatedState.sanity = newSanity;
+      newLog.push(addLog("stat", `${playerName} used Smelling Salts (Sanity restored to 2)`));
+    }
+
+    await updateGs({
+      player_states: { ...gs.player_states, [myPlayerId]: updatedState },
+      event_log: newLog.slice(-30),
+    });
+  }, [isMyTurn, myState, myPlayerId, myChar, players, gs, addLog, updateGs]);
 
   // ── Declare winner ────────────────────────────────────────────────────────
   const handleDeclareWinner = useCallback(async (winner: "heroes" | "traitor") => {
@@ -1928,10 +1955,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {myState.items.map((itemId) => {
                     const item = getCard(itemId);
+                    const isConsumable = itemId === "healing-salve" || itemId === "smelling-salts";
                     return item ? (
-                      <div key={itemId} className="px-2 py-1 rounded-lg text-xs"
+                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
                         style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
                         {item.name}
+                        {isConsumable && isMyTurn && (
+                          <button
+                            onClick={() => handleUseItem(itemId)}
+                            className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold"
+                            style={{ background: "rgba(245,158,11,0.25)", color: "#fcd34d", fontSize: "0.65rem" }}>
+                            Use
+                          </button>
+                        )}
                       </div>
                     ) : null;
                   })}
