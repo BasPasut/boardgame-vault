@@ -545,7 +545,7 @@ const CARD_BACK: Record<string, string> = {
   event: "/images/games/betrayal/cards/card-back-event.png",
 };
 
-function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => void }) {
+function CardOverlay({ cardId, onDismiss, lang = "en" }: { cardId: string; onDismiss: () => void; lang?: "en" | "th" }) {
   const card = getCard(cardId);
   const [imgErr, setImgErr]       = useState(false);
   const [backErr, setBackErr]     = useState(false);
@@ -553,7 +553,11 @@ function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => v
 
   if (!card) return null;
   const typeColor = { item: "#f59e0b", omen: "#ef4444", event: "#6366f1" }[card.type] ?? "#d4af37";
-  const typeLabel = { item: "Item", omen: "Omen", event: "Event" }[card.type] ?? card.type;
+  const typeLabel = lang === "th"
+    ? ({ item: "ไอเทม", omen: "ลางร้าย", event: "เหตุการณ์" }[card.type] ?? card.type)
+    : ({ item: "Item", omen: "Omen", event: "Event" }[card.type] ?? card.type);
+  const revealLabel   = lang === "th" ? "เปิดไพ่" : "Reveal Card";
+  const dismissLabel  = lang === "th" ? "รับทราบ" : "Understood";
   const typeEmoji = { item: "📦", omen: "☠️", event: "👁️" }[card.type] ?? "🃏";
 
   return (
@@ -622,14 +626,14 @@ function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => v
               )}
               <button onClick={onDismiss} className="w-full py-2.5 rounded-xl text-sm font-bold mt-1"
                 style={{ background: `${typeColor}22`, border: `1px solid ${typeColor}55`, color: typeColor }}>
-                Understood
+                {dismissLabel}
               </button>
             </>
           ) : (
             <button onClick={() => setRevealed(true)}
               className="w-full py-3 rounded-xl text-sm font-bold"
               style={{ background: `${typeColor}18`, border: `1px solid ${typeColor}40`, color: typeColor, fontFamily: "var(--font-gothic)" }}>
-              Reveal Card
+              {revealLabel}
             </button>
           )}
         </div>
@@ -899,7 +903,6 @@ function BetrayalChat({
     const body = input.trim();
     setInput("");
     await supabase.from("messages").insert({
-      id: Math.random().toString(36).slice(2) + Date.now(),
       session_code: code,
       from_id: myPlayerId,
       to_id: channel,
@@ -1191,21 +1194,44 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
+  const [showRevolverTargets, setShowRevolverTargets] = useState(false);
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
   const [showBotLog, setShowBotLog] = useState(false);
+  const [showDeathPopup, setShowDeathPopup] = useState(false);
+
+  // Show death popup when my character dies
+  const prevIsDead = useRef(false);
+  useEffect(() => {
+    const nowDead = myState?.is_dead ?? false;
+    if (nowDead && !prevIsDead.current) setShowDeathPopup(true);
+    prevIsDead.current = nowDead;
+  }, [myState?.is_dead]);
 
   // Bot engine — runs silently on host's browser, auto-plays bot turns
   const { botLog, isBotTurn } = useBotEngine({ isHost, gs, players, code });
 
-  // Valid attack targets: living players on the same tile, opposing team
+  // Valid attack targets: living opposing-team players on the same tile
   const validAttackTargets = useMemo(() => {
     if (gs.phase !== "haunt" || !myState || gs.turn_phase !== "action") return [];
     return players.filter((p) => {
       if (p.id === myPlayerId) return false;
       const ps = gs.player_states[p.id];
       if (!ps || ps.is_dead) return false;
-      // Same tile only
+      if (ps.is_traitor === myState.is_traitor) return false; // same team
       return ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+  }, [gs, myState, myPlayerId, players]);
+
+  // Revolver targets: enemies on the same floor (ranged)
+  const revolverTargets = useMemo(() => {
+    if (gs.phase !== "haunt" || !myState || gs.turn_phase !== "action") return [];
+    if (!(myState.items ?? []).includes("revolver")) return [];
+    return players.filter((p) => {
+      if (p.id === myPlayerId) return false;
+      const ps = gs.player_states[p.id];
+      if (!ps || ps.is_dead) return false;
+      if (ps.is_traitor === myState.is_traitor) return false;
+      return ps.floor === myState.floor; // same floor, any room
     });
   }, [gs, myState, myPlayerId, players]);
 
@@ -1237,9 +1263,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const newMovesUsed = gs.moves_used + 1;
     const movesLeft = myState.speed - newMovesUsed;
 
+    // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
+    const tileKey = `${floor},${x},${y}`;
+    const alreadyDrawn = (myState.drawn_tiles ?? []).includes(tileKey);
+    const isCardTile = !alreadyDrawn && !!def?.type && def.type !== "normal" && def.type !== "stairwell";
+    const newDrawnTiles = isCardTile
+      ? [...new Set([...(myState.drawn_tiles ?? []), tileKey])]
+      : (myState.drawn_tiles ?? []);
+
     const newPlayerStates = {
       ...gs.player_states,
-      [myPlayerId!]: { ...myState, x, y, floor },
+      [myPlayerId!]: { ...myState, x, y, floor, drawn_tiles: newDrawnTiles },
     };
 
     let patch: Partial<BetrayalGameState> = {
@@ -1255,14 +1289,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     playSfx("/audio/betrayal/sfx/footstep.mp3");
     await updateGs(patch);
 
-    // Room card trigger — only once per tile ever (permanent per-player)
-    const tileKey = `${floor},${x},${y}`;
-    const alreadyDrawn = (myState.drawn_tiles ?? []).includes(tileKey);
-    if (!alreadyDrawn && def?.type && def.type !== "normal" && def.type !== "stairwell") {
+    // Trigger card popup — tile is already marked drawn in the patch above
+    if (isCardTile) {
       let cardId: string | null = null;
-      if (def.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
-      if (def.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
-      if (def.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
+      if (def!.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
+      if (def!.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
+      if (def!.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
       if (cardId) setPendingCard(cardId);
     }
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
@@ -1273,13 +1305,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const pool = gs.remaining_tiles[floor];
     if (pool.length === 0) return;
 
-    // Pick random tile from pool
-    const idx = Math.floor(Math.random() * pool.length);
-    const tileId = pool[idx];
-    const newPool = pool.filter((_, i) => i !== idx);
-
     // Figure out required door direction: the new tile must have a door facing TOWARD its placed neighbor.
-    // Adjacent at dy=-1 is NORTH → new tile needs "north" door to connect back.
     const dirs = [
       { dx: 0, dy: -1, requiredDoor: "north" as const },
       { dx: 0, dy: 1,  requiredDoor: "south" as const },
@@ -1292,8 +1318,23 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       if (adj) { requiredDoor = rd; break; }
     }
 
-    const placed = buildPlacedTile(tileId, floor, x, y, requiredDoor, myPlayerId!);
-    if (!placed) return; // couldn't fit — skip (draw next in production)
+    // Try tiles in random order until one fits the required door
+    const startIdx = Math.floor(Math.random() * pool.length);
+    let placed = null;
+    let tileId = "";
+    let newPool = pool;
+    for (let attempt = 0; attempt < pool.length; attempt++) {
+      const idx = (startIdx + attempt) % pool.length;
+      const candidate = pool[idx];
+      const candidatePlaced = buildPlacedTile(candidate, floor, x, y, requiredDoor, myPlayerId!);
+      if (candidatePlaced) {
+        placed = candidatePlaced;
+        tileId = candidate;
+        newPool = pool.filter((_, i) => i !== idx);
+        break;
+      }
+    }
+    if (!placed) return; // no tile in pool fits this door
 
     const newTiles = [...gs.placed_tiles, placed];
     const newRemaining = { ...gs.remaining_tiles, [floor]: newPool };
@@ -1586,8 +1627,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       patch.event_log = newLog.slice(-30);
     }
 
-    await updateGs(patch);
     setPendingCard(null);
+    await updateGs(patch);
   }, [myState, myChar, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
   // ── Attack ────────────────────────────────────────────────────────────────
@@ -1670,6 +1711,49 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     setShowAttackTargets(false);
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
+  // ── Revolver attack (ranged — same floor) ─────────────────────────────────
+  const handleRevolverAttack = useCallback(async (targetId: string) => {
+    if (!isMyTurn || !myState || gs.turn_phase !== "action" || gs.phase !== "haunt") return;
+    const targetState = gs.player_states[targetId];
+    if (!targetState || targetState.is_dead) return;
+
+    const attackerRolls = Array.from({ length: getAttackMight(myState) }, () => Math.floor(Math.random() * 3));
+    const defenderRolls = Array.from({ length: targetState.might }, () => Math.floor(Math.random() * 3));
+    const atkSum = attackerRolls.reduce((a, b) => a + b, 0);
+    const defSum = defenderRolls.reduce((a, b) => a + b, 0);
+
+    let winner: "attacker" | "defender" | "tie" = "tie";
+    let damage = 0;
+    if (atkSum > defSum) { winner = "attacker"; damage = atkSum - defSum; }
+    else if (defSum > atkSum) { winner = "defender"; damage = defSum - atkSum; }
+
+    const newPlayerStates = { ...gs.player_states };
+    const attackerPlayer = players.find(p => p.id === myPlayerId);
+    const targetPlayer   = players.find(p => p.id === targetId);
+
+    if (winner === "attacker") {
+      const newMight = Math.max(0, targetState.might - damage);
+      newPlayerStates[targetId] = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
+      if (newPlayerStates[targetId].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+    } else if (winner === "defender") {
+      const newMight = Math.max(0, myState.might - damage);
+      newPlayerStates[myPlayerId!] = { ...myState, might: newMight, is_dead: isDead(newMight, myState.sanity) };
+      if (newPlayerStates[myPlayerId!].is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+    }
+
+    const resultMsg = winner === "tie"
+      ? `${attackerPlayer?.name} missed ${targetPlayer?.name} with the Revolver`
+      : winner === "attacker"
+      ? `${attackerPlayer?.name} shot ${targetPlayer?.name} for ${damage} Might${newPlayerStates[targetId].is_dead ? " — eliminated!" : ""}`
+      : `${targetPlayer?.name} evaded and countered ${attackerPlayer?.name} for ${damage} Might`;
+
+    const newLog = [...gs.event_log, addLog("stat", resultMsg)].slice(-30);
+    await updateGs({ player_states: newPlayerStates, turn_phase: "done", event_log: newLog });
+
+    setCombatResult({ attackerName: attackerPlayer?.name ?? "?", targetName: targetPlayer?.name ?? "?", attackerRolls, defenderRolls, damage, winner });
+    setShowRevolverTargets(false);
+  }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+
   // ── End turn ──────────────────────────────────────────────────────────────
   const handleEndTurn = useCallback(async () => {
     if (!isMyTurn) return;
@@ -1689,6 +1773,33 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       moves_used: 0,
     });
   }, [isMyTurn, gs, updateGs]);
+
+  // ── Use item (consumables) ────────────────────────────────────────────────
+  const handleUseItem = useCallback(async (itemId: string) => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const char = myChar;
+    if (!char) return;
+    let updatedState = { ...myState };
+    const newItems = myState.items.filter((id) => id !== itemId);
+    updatedState.items = newItems;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log];
+
+    if (itemId === "healing-salve") {
+      const newMight = Math.min(char.mightMax, myState.might + 2);
+      updatedState.might = newMight;
+      newLog.push(addLog("stat", `${playerName} used Healing Salve (+2 Might)`));
+    } else if (itemId === "smelling-salts") {
+      const newSanity = Math.max(myState.sanity, 2);
+      updatedState.sanity = newSanity;
+      newLog.push(addLog("stat", `${playerName} used Smelling Salts (Sanity restored to 2)`));
+    }
+
+    await updateGs({
+      player_states: { ...gs.player_states, [myPlayerId]: updatedState },
+      event_log: newLog.slice(-30),
+    });
+  }, [isMyTurn, myState, myPlayerId, myChar, players, gs, addLog, updateGs]);
 
   // ── Declare winner ────────────────────────────────────────────────────────
   const handleDeclareWinner = useCallback(async (winner: "heroes" | "traitor") => {
@@ -1722,8 +1833,29 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         />
       )}
 
+      {/* Death popup */}
+      {showDeathPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.85)" }}>
+          <div className="max-w-xs w-full mx-4 rounded-2xl p-6 text-center space-y-4"
+            style={{ background: "rgba(10,4,4,0.98)", border: "1px solid rgba(239,68,68,0.4)" }}>
+            <div className="text-5xl">💀</div>
+            <h2 className="text-2xl font-black" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>You Have Died</h2>
+            <p className="text-sm" style={{ color: "#7a6a5a" }}>Your character has been eliminated from the mansion.</p>
+            <button
+              onClick={async () => {
+                setShowDeathPopup(false);
+                if (isMyTurn) await handleEndTurn();
+              }}
+              className="w-full py-3 rounded-xl text-sm font-bold"
+              style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+              {isMyTurn ? "End Turn" : "Dismiss"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Card overlay */}
-      {pendingCard && <CardOverlay cardId={pendingCard} onDismiss={() => {
+      {pendingCard && <CardOverlay cardId={pendingCard} lang={lang} onDismiss={() => {
         const card = getCard(pendingCard);
         if (card) handleDrawCard(pendingCard, card.type as "item" | "omen" | "event");
         else setPendingCard(null);
@@ -1862,11 +1994,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   End Turn
                 </button>
 
-                {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && (
+                {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && !showRevolverTargets && (
                   <button onClick={() => setShowAttackTargets(true)}
                     className="flex-1 py-2 rounded-xl text-sm font-bold"
                     style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                     ⚔ Attack
+                  </button>
+                )}
+                {gs.phase === "haunt" && gs.turn_phase === "action" && revolverTargets.length > 0 && !showAttackTargets && !showRevolverTargets && (
+                  <button onClick={() => setShowRevolverTargets(true)}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#f97316", fontFamily: "var(--font-gothic)" }}>
+                    🔫 Revolver
                   </button>
                 )}
               </div>
@@ -1894,6 +2033,35 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     );
                   })}
                   <button onClick={() => setShowAttackTargets(false)}
+                    className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {showRevolverTargets && (
+                <div className="rounded-xl p-3 space-y-2"
+                  style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(249,115,22,0.25)" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#f97316", fontFamily: "var(--font-gothic)" }}>
+                    🔫 Shoot target (same floor)
+                  </p>
+                  {revolverTargets.map((target) => {
+                    const tState = gs.player_states[target.id];
+                    const tChar = tState ? getCharacter(tState.character_id) : null;
+                    return (
+                      <button key={target.id}
+                        onClick={() => handleRevolverAttack(target.id)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left"
+                        style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.2)", color: "#e8d5b0" }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)" }}>{target.name}</p>
+                          {tChar && <p className="text-xs" style={{ color: "#7a6a5a" }}>{tChar.name} · Might {tState?.might ?? "?"}</p>}
+                        </div>
+                        <span className="text-sm flex-shrink-0" style={{ color: "#f97316" }}>Shoot →</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setShowRevolverTargets(false)}
                     className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
                     Cancel
                   </button>
@@ -1928,10 +2096,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {myState.items.map((itemId) => {
                     const item = getCard(itemId);
+                    const isConsumable = itemId === "healing-salve" || itemId === "smelling-salts";
                     return item ? (
-                      <div key={itemId} className="px-2 py-1 rounded-lg text-xs"
+                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
                         style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
                         {item.name}
+                        {isConsumable && isMyTurn && (
+                          <button
+                            onClick={() => handleUseItem(itemId)}
+                            className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold"
+                            style={{ background: "rgba(245,158,11,0.25)", color: "#fcd34d", fontSize: "0.65rem" }}>
+                            Use
+                          </button>
+                        )}
                       </div>
                     ) : null;
                   })}
