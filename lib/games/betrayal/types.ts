@@ -82,6 +82,8 @@ export interface PlayerGameState {
   items: string[];   // card ids
   is_dead: boolean;
   is_traitor: boolean;
+  // Permanent list of "floor,x,y" keys this player has already drawn a card from
+  drawn_tiles: string[];
 }
 
 export interface GameEvent {
@@ -121,4 +123,6 @@ export interface BetrayalGameState {
   haunt_objectives: { traitor: string; heroes: string } | null;
   // pending card — drawn this turn, not yet resolved
   pending_card: { type: CardType; card_id: string } | null;
+  // tiles (floor,x,y keys) from which the current player already drew a card this turn
+  turn_drawn_tiles: string[];
 }

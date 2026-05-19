@@ -69,6 +69,17 @@ async function writeGs(code: string, gs: BetrayalGameState) {
   await supabase.from("sessions").update({ game_state: gs }).eq("code", code);
 }
 
+const isDead = (might: number, sanity: number) => might <= 0 || sanity <= 0;
+
+function getAttackMight(state: PlayerGameState): number {
+  let bonus = 0;
+  const items = state.items ?? [];
+  if (items.includes("axe"))                bonus += 2;
+  if (items.includes("knife"))              bonus += 1;
+  if (items.includes("sacrificial-dagger")) bonus += 3;
+  return Math.max(1, state.might + bonus);
+}
+
 /** Advance `current_turn_index`, skipping eliminated players. */
 function nextTurnGs(gs: BetrayalGameState): BetrayalGameState {
   const len = gs.turn_order.length;
@@ -113,61 +124,116 @@ function resolveCardForBot(
     event_log:    newLog.slice(-30),
   };
 
-  // Item — add to bot inventory
+  // Item — add to inventory + apply pickup stat bonuses
   if (card.type === "item") {
     const newItems = [...(botState.items ?? []), cardId];
-    patch.player_states = {
-      ...gs.player_states,
-      [botId]: { ...botState, items: newItems },
-    };
+    let updatedBot = { ...botState, items: newItems };
+    if (cardId === "holy-symbol")  updatedBot.sanity    = Math.min(updatedBot.sanity    + 2, 8);
+    if (cardId === "ancient-book") updatedBot.knowledge  = Math.min(updatedBot.knowledge + 2, 8);
+    if (cardId === "healing-salve") updatedBot.might     = Math.min(updatedBot.might     + 2, 8);
+    pushBotLog(`Picked up ${card.name}`);
+    patch.player_states = { ...gs.player_states, [botId]: updatedBot };
   }
 
-  // Omen — haunt roll
+  // Omen — apply stat effects then haunt roll
   if (card.type === "omen") {
-    const newOmenCount = gs.omen_count + 1;
-    patch.omen_count = newOmenCount;
+    // Omen stat effects (applied regardless of haunt state)
+    const existingPS = (patch.player_states ?? gs.player_states) as Record<string, PlayerGameState>;
+    let updatedBot = { ...(existingPS[botId] as PlayerGameState) };
+    if (cardId === "omen-candle") updatedBot.knowledge = Math.min(updatedBot.knowledge + 1, 8);
+    if (cardId === "omen-dog")    updatedBot.speed      = Math.min(updatedBot.speed     + 1, 8);
+    if (cardId === "omen-girl") {
+      updatedBot.sanity  = Math.max(updatedBot.sanity - 1, 0);
+      updatedBot.is_dead = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-mask") {
+      updatedBot.might     = Math.max(updatedBot.might - 1, 0);
+      updatedBot.knowledge = Math.min(updatedBot.knowledge + 2, 8);
+      updatedBot.is_dead   = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-book" && gs.item_deck.length > 0) {
+      const itemId = gs.item_deck[0];
+      updatedBot.items = [...(updatedBot.items ?? []), itemId];
+      patch.item_deck    = gs.item_deck.slice(1);
+      patch.item_discard = [itemId, ...(gs.item_discard ?? [])];
+    }
+    if (cardId === "omen-skull") {
+      const allPS = { ...existingPS };
+      for (const pid of Object.keys(allPS)) {
+        const s = allPS[pid];
+        const newSanity = Math.max(s.sanity - 1, 0);
+        allPS[pid] = { ...s, sanity: newSanity, is_dead: isDead(s.might, newSanity) };
+      }
+      patch.player_states = allPS;
+    } else if (cardId === "omen-holy-symbol") {
+      // All players in same room roll Sanity (3+) or lose 1
+      const allPS = { ...existingPS };
+      for (const pid of Object.keys(allPS)) {
+        const ps = allPS[pid];
+        if (ps.floor === botState.floor && ps.x === botState.x && ps.y === botState.y) {
+          const roll = rollDice(2).reduce((a, b) => a + b, 0);
+          if (roll < 3) {
+            const newSanity = Math.max(ps.sanity - 1, 0);
+            allPS[pid] = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+          }
+        }
+      }
+      patch.player_states = allPS;
+    } else {
+      patch.player_states = { ...existingPS, [botId]: updatedBot };
+    }
 
-    const roll    = rollDice(2);
-    const rollSum = roll.reduce((a, b) => a + b, 0);
-    pushBotLog(`Haunt roll: ${rollSum} (need < ${newOmenCount}) → ${rollSum < newOmenCount ? "🩸 HAUNT" : "safe"}`);
+    if (gs.phase === "haunt") {
+      // Haunt already running — don't re-trigger
+      pushBotLog(`Omen drawn but haunt already started — skipping haunt roll`);
+    } else {
+      const newOmenCount = gs.omen_count + 1;
+      patch.omen_count = newOmenCount;
 
-    if (rollSum < newOmenCount) {
-      const currentTile = tileAt(gs.placed_tiles, botState.floor, botState.x, botState.y);
-      const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
+      const roll    = rollDice(2);
+      const rollSum = roll.reduce((a, b) => a + b, 0);
+      pushBotLog(`Haunt roll: ${rollSum} (need < ${newOmenCount}) → ${rollSum < newOmenCount ? "🩸 HAUNT" : "safe"}`);
 
-      // Pick a random living human as traitor (bots excluded if possible)
-      const eligible = gs.turn_order.filter(
-        (id) => id !== botId && !id.startsWith("bot-") && !gs.player_states[id]?.is_dead,
-      );
-      const fallback = gs.turn_order.filter(
-        (id) => !gs.player_states[id]?.is_dead,
-      );
-      const traitorId = eligible.length > 0
-        ? eligible[Math.floor(Math.random() * eligible.length)]
-        : fallback[Math.floor(Math.random() * fallback.length)] ?? botId;
+      if (rollSum < newOmenCount) {
+        const currentTile = tileAt(gs.placed_tiles, botState.floor, botState.x, botState.y);
+        const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
 
-      const newPlayerStates = { ...gs.player_states };
-      if (newPlayerStates[traitorId]) {
-        newPlayerStates[traitorId] = {
-          ...(newPlayerStates[traitorId] as PlayerGameState),
-          is_traitor: true,
+        // Pick a random living human as traitor (bots and already-traitors excluded if possible)
+        const eligible = gs.turn_order.filter(
+          (id) => id !== botId && !id.startsWith("bot-") && !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor,
+        );
+        const fallback = gs.turn_order.filter(
+          (id) => !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor,
+        );
+        const traitorId = eligible.length > 0
+          ? eligible[Math.floor(Math.random() * eligible.length)]
+          : fallback.length > 0
+          ? fallback[Math.floor(Math.random() * fallback.length)]
+          : botId;
+
+        const newPlayerStates = { ...gs.player_states };
+        if (newPlayerStates[traitorId]) {
+          newPlayerStates[traitorId] = {
+            ...(newPlayerStates[traitorId] as PlayerGameState),
+            is_traitor: true,
+          };
+        }
+
+        pushBotLog(`🩸 Haunt "${haunt.name}" begins! Traitor: ${traitorId}`);
+
+        patch = {
+          ...patch,
+          phase:            "haunt",
+          haunt_number:     haunt.number,
+          traitor_id:       traitorId,
+          player_states:    newPlayerStates,
+          haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
+          event_log: [
+            ...(patch.event_log ?? newLog),
+            mkLog("haunt", botId, `The Haunt begins! "${haunt.name}"`),
+          ].slice(-30),
         };
       }
-
-      pushBotLog(`🩸 Haunt "${haunt.name}" begins! Traitor: ${traitorId}`);
-
-      patch = {
-        ...patch,
-        phase:            "haunt",
-        haunt_number:     haunt.number,
-        traitor_id:       traitorId,
-        player_states:    newPlayerStates,
-        haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
-        event_log: [
-          ...(patch.event_log ?? newLog),
-          mkLog("haunt", botId, `The Haunt begins! "${haunt.name}"`),
-        ].slice(-30),
-      };
     }
   }
 
@@ -216,15 +282,13 @@ async function executeBotTurn(
     // ── Explore a new room ──────────────────────────────────────────────────
     const pick = explorableFromHere[Math.floor(Math.random() * explorableFromHere.length)];
     const pool = cur.remaining_tiles[floor];
-    const idx  = Math.floor(Math.random() * pool.length);
-    const tileId = pool[idx];
 
-    // Determine required door direction
+    // Determine required door direction (new tile must have a door facing the neighbor)
     const dirs: { dx: number; dy: number; rd: "north" | "south" | "east" | "west" }[] = [
-      { dx: 0, dy: -1, rd: "south" },
-      { dx: 0, dy:  1, rd: "north" },
-      { dx: 1, dy:  0, rd: "west"  },
-      { dx: -1, dy: 0, rd: "east"  },
+      { dx: 0, dy: -1, rd: "north" },
+      { dx: 0, dy:  1, rd: "south" },
+      { dx: 1, dy:  0, rd: "east"  },
+      { dx: -1, dy: 0, rd: "west"  },
     ];
     let requiredDoor: "north" | "south" | "east" | "west" = "south";
     for (const { dx, dy, rd } of dirs) {
@@ -234,30 +298,46 @@ async function executeBotTurn(
       }
     }
 
-    const placed = buildPlacedTile(tileId, floor, pick.x, pick.y, requiredDoor, botId);
+    // Shuffle pool and try each tile until one fits (prevents infinite no-fit loops)
+    const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+    let placed = null;
+    let chosenIdx = -1;
+    let chosenTileId = "";
+    for (let attempt = 0; attempt < shuffledPool.length; attempt++) {
+      const candidate = shuffledPool[attempt];
+      const result = buildPlacedTile(candidate, floor, pick.x, pick.y, requiredDoor, botId);
+      if (result) {
+        placed = result;
+        chosenTileId = candidate;
+        chosenIdx = pool.indexOf(candidate);
+        break;
+      }
+    }
+
     if (placed) {
-      const tileDef = getTile(tileId);
-      pushBotLog(`${botName}: Discovered "${tileDef?.name ?? tileId}"`);
+      const tileDef = getTile(chosenTileId);
+      pushBotLog(`${botName}: Discovered "${tileDef?.name ?? chosenTileId}"`);
 
       cur = {
         ...cur,
         placed_tiles:    [...cur.placed_tiles, placed],
-        remaining_tiles: { ...cur.remaining_tiles, [floor]: pool.filter((_, i) => i !== idx) },
+        remaining_tiles: { ...cur.remaining_tiles, [floor]: pool.filter((_, i) => i !== chosenIdx) },
         player_states: {
           ...cur.player_states,
           [botId]: { ...botState, x: pick.x, y: pick.y },
         },
         moves_used: botState.speed,
         turn_phase: "action",
+        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("tile_reveal", botId, `🤖 ${botName} discovered "${tileDef?.name}"`),
         ].slice(-30),
       };
       movedBotState = { ...botState, x: pick.x, y: pick.y };
-      landedTileId  = tileId;
+      landedTileId  = chosenTileId;
     }
-    // If buildPlacedTile returned null (couldn't fit), fall through to normal move
+    // If no tile fit, fall through to normal move
   }
 
   if (!landedTileId) {
@@ -267,13 +347,13 @@ async function executeBotTurn(
         const parts = key.split(",").map(Number);
         return { floor: parts[0] as Floor, x: parts[1], y: parts[2] };
       })
-      .filter(({ x, y }) => !(x === botState.x && y === botState.y));
+      .filter(({ floor: f, x, y }) => !(f === botState.floor && x === botState.x && y === botState.y));
 
     if (reachableArr.length > 0) {
       const target  = reachableArr[Math.floor(Math.random() * reachableArr.length)];
       const tile    = tileAt(cur.placed_tiles, target.floor, target.x, target.y);
       const tileDef = getTile(tile?.tile_id ?? "");
-      pushBotLog(`${botName}: Moved to "${tileDef?.name ?? "room"}" (${target.x},${target.y})`);
+      pushBotLog(`${botName}: Moved to "${tileDef?.name ?? "room"}" (${target.x},${target.y}) floor ${target.floor}`);
 
       cur = {
         ...cur,
@@ -283,6 +363,7 @@ async function executeBotTurn(
         },
         moves_used: botState.speed,
         turn_phase: "action",
+        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("move", botId, `🤖 ${botName} moved to "${tileDef?.name}"`),
@@ -291,16 +372,17 @@ async function executeBotTurn(
       movedBotState = { ...botState, x: target.x, y: target.y, floor: target.floor };
       landedTileId  = tile?.tile_id ?? null;
     } else {
-      // Truly stuck — just end turn
-      pushBotLog(`${botName}: Nowhere to move`);
-      cur = { ...cur, turn_phase: "action" };
+      pushBotLog(`${botName}: Nowhere to move — ending turn`);
+      cur = { ...cur, turn_phase: "action", turn_drawn_tiles: [] };
     }
   }
 
-  // ── 2. Auto-draw card from the room (if applicable) ───────────────────────
+  // ── 2. Auto-draw card from the room (once per tile per turn) ─────────────
   if (landedTileId) {
     const tileDef = getTile(landedTileId);
-    if (tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell") {
+    const landedTileKey = `${movedBotState.floor},${movedBotState.x},${movedBotState.y}`;
+    const alreadyDrawn = (movedBotState.drawn_tiles ?? []).includes(landedTileKey);
+    if (!alreadyDrawn && tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell") {
       let cardId: string | null = null;
       if (tileDef.type === "item"  && cur.item_deck.length  > 0) cardId = cur.item_deck[0];
       if (tileDef.type === "omen"  && cur.omen_deck.length  > 0) cardId = cur.omen_deck[0];
@@ -308,8 +390,16 @@ async function executeBotTurn(
 
       if (cardId) {
         cur = resolveCardForBot(cur, cardId, botId, movedBotState, pushBotLog);
-        // Always switch to action after drawing a card
-        cur = { ...cur, turn_phase: "action" };
+        // Permanently mark drawn in player state
+        const freshBot = cur.player_states[botId] as PlayerGameState;
+        cur = {
+          ...cur,
+          turn_phase: "action",
+          player_states: {
+            ...cur.player_states,
+            [botId]: { ...freshBot, drawn_tiles: [...new Set([...(freshBot.drawn_tiles ?? []), landedTileKey])] },
+          },
+        };
       }
     }
   }
@@ -335,7 +425,7 @@ async function executeBotTurn(
       const target      = enemies[Math.floor(Math.random() * enemies.length)];
       const targetState = cur.player_states[target.id] as PlayerGameState;
 
-      const atkRolls    = rollDice(Math.max(1, freshBotState.might));
+      const atkRolls    = rollDice(getAttackMight(freshBotState));
       const defRolls    = rollDice(Math.max(1, targetState.might));
       const atkTotal    = atkRolls.reduce((a, b) => a + b, 0);
       const defTotal    = defRolls.reduce((a, b) => a + b, 0);
@@ -344,15 +434,20 @@ async function executeBotTurn(
       let combatMsg = "";
 
       if (atkTotal > defTotal) {
-        const dmg     = atkTotal - defTotal;
+        const dmg      = atkTotal - defTotal;
         const newMight = Math.max(0, targetState.might - dmg);
-        newPlayerStates[target.id] = { ...targetState, might: newMight, is_dead: newMight <= 0 };
-        combatMsg = `🤖 ${botName} hit ${target.name} for ${dmg} Might${newMight <= 0 ? " — eliminated!" : ""}`;
+        newPlayerStates[target.id] = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
+        // Sacrificial Dagger costs 1 Sanity per use
+        if (freshBotState.items?.includes("sacrificial-dagger")) {
+          const newSanity = Math.max(0, freshBotState.sanity - 1);
+          newPlayerStates[botId] = { ...freshBotState, sanity: newSanity, is_dead: isDead(freshBotState.might, newSanity) };
+        }
+        combatMsg = `🤖 ${botName} hit ${target.name} for ${dmg} Might${isDead(newMight, targetState.sanity) ? " — eliminated!" : ""}`;
         pushBotLog(`Attack vs ${target.name}: ${atkTotal} vs ${defTotal} → hit for ${dmg}`);
       } else if (defTotal > atkTotal) {
-        const dmg     = defTotal - atkTotal;
+        const dmg      = defTotal - atkTotal;
         const newMight = Math.max(0, freshBotState.might - dmg);
-        newPlayerStates[botId] = { ...freshBotState, might: newMight, is_dead: newMight <= 0 };
+        newPlayerStates[botId] = { ...freshBotState, might: newMight, is_dead: isDead(newMight, freshBotState.sanity) };
         combatMsg = `🤖 ${botName} was countered by ${target.name} for ${dmg} Might`;
         pushBotLog(`Attack vs ${target.name}: ${atkTotal} vs ${defTotal} → countered for ${dmg}`);
       } else {

@@ -294,10 +294,10 @@ export default function HomePage() {
   return (
     <div className="min-h-screen relative overflow-x-hidden" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 60%)" }}>
       {/* Background image */}
-      <div className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+      <div className="fixed inset-0 bg-cover bg-center bg-no-repeat opacity-20 pointer-events-none"
         style={{ backgroundImage: "url('/images/platform/bg-landing.png')" }} />
       {/* Gradient vignette */}
-      <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent, rgba(13,10,26,0.6) 50%, #0d0a1a)" }} />
+      <div className="fixed inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, transparent, rgba(13,10,26,0.6) 50%, #0d0a1a)" }} />
       {/* Fog */}
       <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none">
         <div className="fog-layer-1 absolute bottom-0 left-0 right-0 h-48" style={{ background: "linear-gradient(to top, rgba(74,111,165,0.15), transparent)", filter: "blur(20px)" }} />

@@ -58,18 +58,20 @@ export function getReachable(
     const curTile = tileAt(tiles, cur.floor, cur.x, cur.y);
     if (!curTile) continue;
 
-    // Check stairwells — allow floor change
+    // Check stairwells — allow floor change to any stairwell on another floor
     const def = getTile(curTile.tile_id);
     if (def?.type === "stairwell") {
-      // Connect to the stairwell tile on adjacent floor if it exists at same x,y
       for (const f of [0, 1, 2] as Floor[]) {
         if (f === cur.floor) continue;
-        const adj = tileAt(tiles, f, cur.x, cur.y);
-        if (adj && getTile(adj.tile_id)?.type === "stairwell") {
-          const key = `${f},${cur.x},${cur.y}`;
+        // Connect to ALL stairwell tiles on the other floor (not just same x,y)
+        const stairwellsOnFloor = tiles.filter(
+          (t) => t.floor === f && getTile(t.tile_id)?.type === "stairwell",
+        );
+        for (const sw of stairwellsOnFloor) {
+          const key = `${f},${sw.x},${sw.y}`;
           if (!visited.has(key)) {
             visited.add(key);
-            queue.push({ floor: f, x: cur.x, y: cur.y, steps: cur.steps + 1 });
+            queue.push({ floor: f, x: sw.x, y: sw.y, steps: cur.steps + 1 });
           }
         }
       }
