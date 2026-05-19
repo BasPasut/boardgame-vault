@@ -903,7 +903,6 @@ function BetrayalChat({
     const body = input.trim();
     setInput("");
     await supabase.from("messages").insert({
-      id: Math.random().toString(36).slice(2) + Date.now(),
       session_code: code,
       from_id: myPlayerId,
       to_id: channel,
@@ -1264,9 +1263,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const newMovesUsed = gs.moves_used + 1;
     const movesLeft = myState.speed - newMovesUsed;
 
+    // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
+    const tileKey = `${floor},${x},${y}`;
+    const alreadyDrawn = (myState.drawn_tiles ?? []).includes(tileKey);
+    const isCardTile = !alreadyDrawn && !!def?.type && def.type !== "normal" && def.type !== "stairwell";
+    const newDrawnTiles = isCardTile
+      ? [...new Set([...(myState.drawn_tiles ?? []), tileKey])]
+      : (myState.drawn_tiles ?? []);
+
     const newPlayerStates = {
       ...gs.player_states,
-      [myPlayerId!]: { ...myState, x, y, floor },
+      [myPlayerId!]: { ...myState, x, y, floor, drawn_tiles: newDrawnTiles },
     };
 
     let patch: Partial<BetrayalGameState> = {
@@ -1282,14 +1289,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     playSfx("/audio/betrayal/sfx/footstep.mp3");
     await updateGs(patch);
 
-    // Room card trigger — only once per tile ever (permanent per-player)
-    const tileKey = `${floor},${x},${y}`;
-    const alreadyDrawn = (myState.drawn_tiles ?? []).includes(tileKey);
-    if (!alreadyDrawn && def?.type && def.type !== "normal" && def.type !== "stairwell") {
+    // Trigger card popup — tile is already marked drawn in the patch above
+    if (isCardTile) {
       let cardId: string | null = null;
-      if (def.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
-      if (def.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
-      if (def.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
+      if (def!.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
+      if (def!.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
+      if (def!.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
       if (cardId) setPendingCard(cardId);
     }
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
