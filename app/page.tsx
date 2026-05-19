@@ -394,7 +394,7 @@ export default function HomePage() {
 
         {CATEGORIES.map((cat) => {
           const catGames = GAMES.filter((g) => g.category === cat.id);
-          const isSingle = catGames.length === 1;
+          const isSingle = catGames.length === 1; // used for card grid sizing
 
           return (
             <div key={cat.id}>
@@ -422,17 +422,11 @@ export default function HomePage() {
               </div>
 
               {/* ── Cards ── */}
-              {isSingle ? (
-                // Single game → wide landscape card
-                <GameCardFeatured game={catGames[0]} lang={lang} t={t} />
-              ) : (
-                // Multiple games → responsive grid
-                <div className={`grid gap-5 grid-cols-1 sm:grid-cols-2 ${catGames.length >= 3 ? "lg:grid-cols-3" : ""}`}>
-                  {catGames.map((game) => (
-                    <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
-                  ))}
-                </div>
-              )}
+              <div className={`grid gap-5 grid-cols-1 sm:grid-cols-2 ${catGames.length >= 3 ? "lg:grid-cols-3" : ""} ${isSingle ? "sm:grid-cols-1 max-w-sm" : ""}`}>
+                {catGames.map((game) => (
+                  <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
+                ))}
+              </div>
             </div>
           );
         })}
