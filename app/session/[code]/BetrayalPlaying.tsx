@@ -82,7 +82,7 @@ function MapTile({
   tile, playersHere, isReachable, isMyPosition, onClick, isNew,
 }: {
   tile: PlacedTile;
-  playersHere: { player: Player; index: number }[];
+  playersHere: { player: Player; index: number; isDead?: boolean }[];
   isReachable: boolean;
   isMyPosition: boolean;
   onClick: () => void;
@@ -134,10 +134,15 @@ function MapTile({
       {/* Player tokens */}
       {playersHere.length > 0 && (
         <div className="absolute top-1 left-1 flex flex-wrap gap-0.5">
-          {playersHere.slice(0, 4).map(({ player, index }) => (
+          {playersHere.slice(0, 4).map(({ player, index, isDead }) => (
             <div key={player.id} className="w-4 h-4 rounded-full flex items-center justify-center text-white font-bold"
-              style={{ background: playerColor(index), fontSize: 7, border: "1px solid rgba(0,0,0,0.5)" }}>
-              {player.name[0].toUpperCase()}
+              style={{
+                background: isDead ? "#374151" : playerColor(index),
+                fontSize: 7,
+                border: "1px solid rgba(0,0,0,0.5)",
+                opacity: isDead ? 0.4 : 1,
+              }}>
+              {isDead ? "✝" : player.name[0].toUpperCase()}
             </div>
           ))}
         </div>
@@ -217,13 +222,13 @@ function MansionMap({
   }, [unexplored, reachable, isMyTurn, myState, viewFloor, gs.turn_phase]);
 
   const playersByTile = useMemo(() => {
-    const map = new Map<string, { player: Player; index: number }[]>();
+    const map = new Map<string, { player: Player; index: number; isDead: boolean }[]>();
     players.forEach((p, idx) => {
       const ps = gs.player_states[p.id];
       if (!ps || ps.floor !== viewFloor) return;
       const key = `${ps.x},${ps.y}`;
       if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push({ player: p, index: idx });
+      map.get(key)!.push({ player: p, index: idx, isDead: ps.is_dead ?? false });
     });
     return map;
   }, [players, gs.player_states, viewFloor]);
@@ -268,7 +273,7 @@ function MansionMap({
                   playersHere={playersByTile.get(`${tile.x},${tile.y}`) ?? []}
                   isReachable={reachable.has(key)}
                   isMyPosition={isMyPos}
-                  isNew={tile.tile_id === newTileKey}
+                  isNew={`${viewFloor}-${tile.x}-${tile.y}` === newTileKey}
                   onClick={() => {
                     if (reachable.has(key) || isMyPos) onMove(tile.x, tile.y, viewFloor);
                   }}
@@ -519,6 +524,88 @@ function DiceOverlay({ values, label, onDismiss }: { values: number[]; label: st
   );
 }
 
+// ─── Combat Result Overlay ────────────────────────────────────────────────────
+interface CombatResultData {
+  attackerName: string;
+  targetName: string;
+  attackerRolls: number[];
+  defenderRolls: number[];
+  damage: number;
+  winner: "attacker" | "defender" | "tie";
+}
+
+function CombatOverlay({ result, onDismiss }: { result: CombatResultData; onDismiss: () => void }) {
+  const attackTotal = result.attackerRolls.reduce((a, b) => a + b, 0);
+  const defendTotal = result.defenderRolls.reduce((a, b) => a + b, 0);
+  const winnerColor = result.winner === "tie" ? "#d4af37" : result.winner === "attacker" ? "#ef4444" : "#22c55e";
+  const winnerBorder = result.winner === "tie" ? "rgba(212,175,55,0.2)" : result.winner === "attacker" ? "rgba(239,68,68,0.3)" : "rgba(34,197,94,0.25)";
+  const winnerBg = result.winner === "tie" ? "rgba(212,175,55,0.07)" : result.winner === "attacker" ? "rgba(239,68,68,0.1)" : "rgba(34,197,94,0.08)";
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.88)" }} onClick={onDismiss}>
+      <div className="max-w-sm w-full rounded-2xl p-6 space-y-5 text-center"
+        style={{ background: "rgba(8,5,12,0.97)", border: "1px solid rgba(239,68,68,0.25)", backdropFilter: "blur(8px)" }}
+        onClick={(e) => e.stopPropagation()}>
+
+        <p className="text-xs uppercase tracking-widest" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+          ⚔ Might Combat
+        </p>
+
+        {/* Side-by-side dice */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-xs font-bold truncate" style={{ color: "#e8d5b0" }}>{result.attackerName}</p>
+            <div className="flex flex-wrap gap-1 justify-center min-h-[4rem]">
+              {result.attackerRolls.length === 0
+                ? <span className="text-xs self-center" style={{ color: "#5a4a3a" }}>—</span>
+                : result.attackerRolls.map((v, i) => <GothicDie key={i} value={v} />)
+              }
+            </div>
+            <p className="text-3xl font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{attackTotal}</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-bold truncate" style={{ color: "#e8d5b0" }}>{result.targetName}</p>
+            <div className="flex flex-wrap gap-1 justify-center min-h-[4rem]">
+              {result.defenderRolls.length === 0
+                ? <span className="text-xs self-center" style={{ color: "#5a4a3a" }}>—</span>
+                : result.defenderRolls.map((v, i) => <GothicDie key={i} value={v} />)
+              }
+            </div>
+            <p className="text-3xl font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{defendTotal}</p>
+          </div>
+        </div>
+
+        {/* Result banner */}
+        <div className="rounded-xl px-4 py-3" style={{ background: winnerBg, border: `1px solid ${winnerBorder}` }}>
+          {result.winner === "tie" && (
+            <p className="text-sm font-bold" style={{ color: winnerColor }}>Draw — no damage dealt</p>
+          )}
+          {result.winner === "attacker" && (
+            <p className="text-sm font-bold leading-relaxed" style={{ color: winnerColor }}>
+              {result.targetName} takes{" "}
+              <span className="text-xl">{result.damage}</span> Might damage
+              {result.damage >= 4 && " 💀"}
+            </p>
+          )}
+          {result.winner === "defender" && (
+            <p className="text-sm font-bold leading-relaxed" style={{ color: winnerColor }}>
+              Counter-strike! {result.attackerName} takes{" "}
+              <span className="text-xl">{result.damage}</span> Might damage
+            </p>
+          )}
+        </div>
+
+        <button onClick={onDismiss}
+          className="w-full py-2.5 rounded-xl text-sm font-bold"
+          style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.25)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, isHost }: Props) {
   const lang = getLang();
@@ -542,6 +629,20 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
+  const [showAttackTargets, setShowAttackTargets] = useState(false);
+  const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
+
+  // Valid attack targets: living players on the same tile, opposing team
+  const validAttackTargets = useMemo(() => {
+    if (gs.phase !== "haunt" || !myState || gs.turn_phase !== "action") return [];
+    return players.filter((p) => {
+      if (p.id === myPlayerId) return false;
+      const ps = gs.player_states[p.id];
+      if (!ps || ps.is_dead) return false;
+      // Same tile only
+      return ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+  }, [gs, myState, myPlayerId, players]);
 
   // ── Supabase updater ──────────────────────────────────────────────────────
   const updateGs = useCallback(async (patch: Partial<BetrayalGameState>) => {
@@ -718,10 +819,90 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     setPendingCard(null);
   }, [myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
+  // ── Attack ────────────────────────────────────────────────────────────────
+  const handleAttack = useCallback(async (targetId: string) => {
+    if (!isMyTurn || !myState || gs.turn_phase !== "action" || gs.phase !== "haunt") return;
+    const targetState = gs.player_states[targetId];
+    if (!targetState || targetState.is_dead) return;
+
+    // Roll Might dice for both sides (each die: 0-2)
+    const attackerRolls = rollDice(Math.max(1, myState.might));
+    const defenderRolls = rollDice(Math.max(1, targetState.might));
+    const attackTotal = attackerRolls.reduce((a, b) => a + b, 0);
+    const defendTotal = defenderRolls.reduce((a, b) => a + b, 0);
+
+    const attackerPlayer = players.find((p) => p.id === myPlayerId);
+    const targetPlayer   = players.find((p) => p.id === targetId);
+
+    let winner: "attacker" | "defender" | "tie" = "tie";
+    let damage = 0;
+    const newPlayerStates = { ...gs.player_states };
+
+    if (attackTotal > defendTotal) {
+      winner = "attacker";
+      damage = attackTotal - defendTotal;
+      const newMight = Math.max(0, targetState.might - damage);
+      newPlayerStates[targetId] = {
+        ...targetState,
+        might: newMight,
+        is_dead: newMight <= 0,
+      };
+      if (newMight <= 0) playSfx("/audio/betrayal/sfx/scream.mp3");
+      else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+    } else if (defendTotal > attackTotal) {
+      winner = "defender";
+      damage = defendTotal - attackTotal;
+      const newMight = Math.max(0, myState.might - damage);
+      newPlayerStates[myPlayerId!] = {
+        ...myState,
+        might: newMight,
+        is_dead: newMight <= 0,
+      };
+      if (newMight <= 0) playSfx("/audio/betrayal/sfx/scream.mp3");
+      else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+    } else {
+      playSfx("/audio/betrayal/sfx/dice-roll.mp3");
+    }
+
+    const resultMsg =
+      winner === "tie"
+        ? `${attackerPlayer?.name} attacked ${targetPlayer?.name} — draw (${attackTotal} vs ${defendTotal})`
+        : winner === "attacker"
+        ? `${attackerPlayer?.name} hit ${targetPlayer?.name} for ${damage} Might${newPlayerStates[targetId].is_dead ? " — eliminated!" : ""}`
+        : `${targetPlayer?.name} countered ${attackerPlayer?.name} for ${damage} Might${newPlayerStates[myPlayerId!]?.is_dead ? " — eliminated!" : ""}`;
+
+    const newLog = [...gs.event_log, addLog("stat", resultMsg)].slice(-30);
+
+    await updateGs({
+      player_states: newPlayerStates,
+      turn_phase: "done", // attacking costs your action for the turn
+      event_log: newLog,
+    });
+
+    setCombatResult({
+      attackerName: attackerPlayer?.name ?? "?",
+      targetName: targetPlayer?.name ?? "?",
+      attackerRolls,
+      defenderRolls,
+      damage,
+      winner,
+    });
+    setShowAttackTargets(false);
+  }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+
   // ── End turn ──────────────────────────────────────────────────────────────
   const handleEndTurn = useCallback(async () => {
     if (!isMyTurn) return;
-    const nextIndex = (gs.current_turn_index + 1) % gs.turn_order.length;
+    // Advance index, skipping eliminated players
+    let nextIndex = (gs.current_turn_index + 1) % gs.turn_order.length;
+    let attempts = 0;
+    while (
+      gs.player_states[gs.turn_order[nextIndex]]?.is_dead &&
+      attempts < gs.turn_order.length
+    ) {
+      nextIndex = (nextIndex + 1) % gs.turn_order.length;
+      attempts++;
+    }
     await updateGs({
       current_turn_index: nextIndex,
       turn_phase: "move",
@@ -764,6 +945,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
       {/* Dice overlay */}
       {diceResult && <DiceOverlay {...diceResult} onDismiss={() => setDiceResult(null)} />}
+
+      {/* Combat result overlay */}
+      {combatResult && <CombatOverlay result={combatResult} onDismiss={() => setCombatResult(null)} />}
 
       {/* Header */}
       <div className="sticky top-0 z-20" style={{ background: "rgba(10,7,8,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.12)" }}>
@@ -822,26 +1006,74 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
         {/* Action bar */}
         {isMyTurn && (
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={handleEndTurn}
-              className="flex-1 py-2 rounded-xl text-sm font-bold"
-              style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-              End Turn
-            </button>
-            {gs.phase === "haunt" && myState?.is_traitor && (
-              <button onClick={() => handleDeclareWinner("traitor")}
-                className="px-4 py-2 rounded-xl text-sm font-bold"
-                style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}>
-                Declare Victory
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={handleEndTurn}
+                className="flex-1 py-2 rounded-xl text-sm font-bold"
+                style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                End Turn
               </button>
-            )}
-            {gs.phase === "haunt" && !myState?.is_traitor && (
-              <button onClick={() => handleDeclareWinner("heroes")}
-                className="px-4 py-2 rounded-xl text-sm font-bold"
-                style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
-                Heroes Win
-              </button>
+
+              {/* Attack button — haunt phase, action phase, enemies on same tile */}
+              {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && (
+                <button onClick={() => setShowAttackTargets(true)}
+                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                  ⚔ Attack
+                </button>
+              )}
+
+              {/* Win declaration buttons */}
+              {gs.phase === "haunt" && myState?.is_traitor && (
+                <button onClick={() => handleDeclareWinner("traitor")}
+                  className="px-4 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}>
+                  Declare Victory
+                </button>
+              )}
+              {gs.phase === "haunt" && !myState?.is_traitor && (
+                <button onClick={() => handleDeclareWinner("heroes")}
+                  className="px-4 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
+                  Heroes Win
+                </button>
+              )}
+            </div>
+
+            {/* Target selector */}
+            {showAttackTargets && (
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                  ⚔ Choose target
+                </p>
+                {validAttackTargets.map((target) => {
+                  const tState = gs.player_states[target.id];
+                  const tChar = tState ? getCharacter(tState.character_id) : null;
+                  return (
+                    <button key={target.id}
+                      onClick={() => handleAttack(target.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all"
+                      style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#e8d5b0" }}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)" }}>{target.name}</p>
+                        {tChar && (
+                          <p className="text-xs" style={{ color: "#7a6a5a" }}>
+                            {tChar.name} · Might {tState?.might ?? "?"}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-sm" style={{ color: "#ef4444" }}>Roll Dice →</span>
+                    </button>
+                  );
+                })}
+                <button onClick={() => setShowAttackTargets(false)}
+                  className="w-full py-1.5 rounded-lg text-xs"
+                  style={{ color: "#5a4a3a" }}>
+                  Cancel
+                </button>
+              </div>
             )}
           </div>
         )}
