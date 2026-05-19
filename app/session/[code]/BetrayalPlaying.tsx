@@ -2166,6 +2166,81 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             const border = isTraitor ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.18)";
             const powers = isTraitor ? scenario.traitorPowers : scenario.heroPowers;
             const objective = isTraitor ? scenario.traitorObjective : scenario.heroObjective;
+
+            // ── Map/item status checker ─────────────────────────────────────
+            // Scan all objectives + powers text for known rooms and items
+            const allText = [scenario.heroObjective, scenario.traitorObjective, ...(scenario.heroPowers ?? []), ...(scenario.traitorPowers ?? [])].join(" ");
+
+            const ROOM_KEYWORDS: { label: string; tileId: string; floor: 0|1|2 }[] = [
+              { label: "Crypt",        tileId: "crypt",            floor: 0 },
+              { label: "Dungeon",      tileId: "dungeon",          floor: 0 },
+              { label: "Vault",        tileId: "vault",            floor: 0 },
+              { label: "Underground Lake", tileId: "underground-lake", floor: 0 },
+              { label: "Furnace Room", tileId: "furnace-room",     floor: 0 },
+              { label: "Wine Cellar",  tileId: "wine-cellar",      floor: 0 },
+              { label: "Garden",       tileId: "garden",           floor: 1 },
+              { label: "Parlor",       tileId: "parlor",           floor: 1 },
+              { label: "Library",      tileId: "library",          floor: 1 },
+              { label: "Ballroom",     tileId: "ballroom",         floor: 1 },
+              { label: "Kitchen",      tileId: "kitchen",          floor: 1 },
+              { label: "Dining Room",  tileId: "dining-room",      floor: 1 },
+              { label: "Tower",        tileId: "tower",            floor: 2 },
+              { label: "Gallery",      tileId: "gallery",          floor: 2 },
+              { label: "Study",        tileId: "study",            floor: 2 },
+              { label: "Entrance Hall",tileId: "entrance-hall",    floor: 1 },
+            ];
+
+            const ITEM_KEYWORDS: { label: string; itemId: string }[] = [
+              { label: "Holy Symbol",   itemId: "holy-symbol" },
+              { label: "Ancient Book",  itemId: "ancient-book" },
+              { label: "Amulet",        itemId: "amulet" },
+              { label: "Lantern",       itemId: "lantern" },
+              { label: "Lucky Coin",    itemId: "lucky-coin" },
+              { label: "Healing Salve", itemId: "healing-salve" },
+              { label: "Rope",          itemId: "rope" },
+              { label: "Skeleton Key",  itemId: "omen-key" },
+              { label: "Skull",         itemId: "omen-skull" },
+              { label: "Axe",           itemId: "axe" },
+              { label: "Candle",        itemId: "candle" },
+            ];
+
+            const mentionedRooms = ROOM_KEYWORDS.filter(r => allText.includes(r.label));
+            const mentionedItems = ITEM_KEYWORDS.filter(i => allText.includes(i.label));
+
+            const placedTileIds = new Set(gs.placed_tiles.map(t => t.tile_id));
+
+            const getRoomStatus = (tileId: string, floor: 0|1|2) => {
+              if (placedTileIds.has(tileId)) return { icon: "✅", text: "on map", color: "#22c55e" };
+              const inPool = (gs.remaining_tiles[floor] ?? []).includes(tileId);
+              if (inPool) return { icon: "🗺", text: "not yet explored", color: "#f59e0b" };
+              return { icon: "❌", text: "not available", color: "#ef4444" };
+            };
+
+            const getItemStatus = (itemId: string) => {
+              // Check if it's an omen (starts with "omen-")
+              if (itemId.startsWith("omen-")) {
+                const inDeck = gs.omen_deck.includes(itemId);
+                const inDiscard = gs.omen_discard.includes(itemId);
+                if (inDeck) return { icon: "🃏", text: "in omen deck", color: "#f59e0b" };
+                if (inDiscard) return { icon: "✅", text: "already drawn", color: "#22c55e" };
+                return { icon: "❓", text: "unknown", color: "#7a6a5a" };
+              }
+              // Regular item
+              const inDeck = gs.item_deck.includes(itemId);
+              const holders: string[] = [];
+              for (const [pid, ps] of Object.entries(gs.player_states)) {
+                if ((ps.items ?? []).includes(itemId)) {
+                  const pName = players.find(p => p.id === pid)?.name ?? pid;
+                  holders.push(ps.is_traitor ? `${pName}(⚔)` : pName);
+                }
+              }
+              if (holders.length > 0) return { icon: "🎒", text: `held by ${holders.join(", ")}`, color: holders.some(h => h.includes("⚔")) ? "#ef4444" : "#22c55e" };
+              if (inDeck) return { icon: "🃏", text: "in item deck", color: "#f59e0b" };
+              return { icon: "❌", text: "not available", color: "#ef4444" };
+            };
+
+            const hasStatusItems = mentionedRooms.length > 0 || mentionedItems.length > 0;
+
             return (
               <div className="flex-shrink-0 rounded-xl p-3 space-y-2 text-xs" style={{ background: bg, border: `1px solid ${border}` }}>
                 <p className="font-black uppercase tracking-widest" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
@@ -2178,6 +2253,32 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                       <li key={i} style={{ color: "#7a6a5a" }}>• {p}</li>
                     ))}
                   </ul>
+                )}
+                {/* Live status check for required rooms and items */}
+                {hasStatusItems && (
+                  <div className="mt-2 pt-2 space-y-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p className="font-bold uppercase tracking-widest" style={{ color: "#5a4a3a", fontSize: 9 }}>Scenario status</p>
+                    {mentionedRooms.map(r => {
+                      const s = getRoomStatus(r.tileId, r.floor);
+                      return (
+                        <div key={r.tileId} className="flex items-center gap-1.5">
+                          <span>{s.icon}</span>
+                          <span style={{ color: "#7a6a5a" }}>{r.label}:</span>
+                          <span style={{ color: s.color }}>{s.text}</span>
+                        </div>
+                      );
+                    })}
+                    {mentionedItems.map(it => {
+                      const s = getItemStatus(it.itemId);
+                      return (
+                        <div key={it.itemId} className="flex items-center gap-1.5">
+                          <span>{s.icon}</span>
+                          <span style={{ color: "#7a6a5a" }}>{it.label}:</span>
+                          <span style={{ color: s.color }}>{s.text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             );
