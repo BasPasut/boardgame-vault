@@ -1237,6 +1237,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [showDynamiteTargets, setShowDynamiteTargets] = useState(false);
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
   const [showBotLog, setShowBotLog] = useState(false);
+  const [showHauntGuide, setShowHauntGuide] = useState(false);
+  const [showEventLog, setShowEventLog] = useState(false);
   const [showDeathPopup, setShowDeathPopup] = useState(false);
 
   // Show death popup when my character dies
@@ -2156,7 +2158,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           className="flex-shrink-0 lg:w-80 xl:w-96 flex flex-col gap-3 p-3 overflow-y-auto border-t lg:border-t-0 lg:border-l max-h-[48vh] lg:max-h-none"
           style={{ borderColor: "rgba(212,175,55,0.08)" }}
         >
-          {/* Haunt scenario guide — always visible during haunt */}
+          {/* Haunt scenario guide — collapsible */}
           {gs.phase === "haunt" && gs.haunt_number != null && (() => {
             const scenario = getHaunt(gs.haunt_number);
             if (!scenario) return null;
@@ -2242,10 +2244,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             const hasStatusItems = mentionedRooms.length > 0 || mentionedItems.length > 0;
 
             return (
-              <div className="flex-shrink-0 rounded-xl p-3 space-y-2 text-xs" style={{ background: bg, border: `1px solid ${border}` }}>
-                <p className="font-black uppercase tracking-widest" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
-                  {isTraitor ? "⚔" : "🕯"} Haunt #{gs.haunt_number} — {scenario.name}
-                </p>
+              <div className="flex-shrink-0 rounded-xl overflow-hidden text-xs" style={{ border: `1px solid ${border}` }}>
+                {/* Toggle header */}
+                <button
+                  onClick={() => setShowHauntGuide(v => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2.5"
+                  style={{ background: bg }}>
+                  <span className="font-black uppercase tracking-widest" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
+                    {isTraitor ? "⚔" : "🕯"} Haunt #{gs.haunt_number} — {scenario.name}
+                  </span>
+                  <span style={{ color: accent, fontSize: 10 }}>{showHauntGuide ? "▲" : "▼"}</span>
+                </button>
+                {showHauntGuide && <div className="px-3 pb-3 space-y-2" style={{ background: bg }}>
                 <p style={{ color: "#c8b89a" }}><span className="font-bold">Goal: </span>{objective}</p>
                 {powers && powers.length > 0 && (
                   <ul className="space-y-1 pl-2">
@@ -2280,6 +2290,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     })}
                   </div>
                 )}
+                </div>}
               </div>
             );
           })()}
@@ -2637,17 +2648,27 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             })}
           </div>
 
-          {/* Event log */}
-          <div className="rounded-xl p-3 space-y-1 flex-1 min-h-0 overflow-y-auto"
-            style={{ background: "rgba(13,10,26,0.6)", border: "1px solid rgba(255,255,255,0.05)", minHeight: 80 }}>
-            <p className="text-xs font-bold mb-1" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>Event Log</p>
-            {gs.event_log.slice().reverse().map((ev) => (
-              <p key={ev.id} className="text-xs" style={{ color: "#7a6a5a" }}>
-                <span style={{ color: "#4a3a2a" }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} </span>
-                {ev.message}
-              </p>
-            ))}
-            {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
+          {/* Event log — collapsible */}
+          <div className="rounded-xl overflow-hidden flex-shrink-0"
+            style={{ background: "rgba(13,10,26,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <button
+              onClick={() => setShowEventLog(v => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold"
+              style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+              <span>Event Log {gs.event_log.length > 0 && <span style={{ color: "#3a2a1a" }}>({gs.event_log.length})</span>}</span>
+              <span style={{ color: "#4a3a2a" }}>{showEventLog ? "▲" : "▼"}</span>
+            </button>
+            {showEventLog && (
+              <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
+                {gs.event_log.slice().reverse().map((ev) => (
+                  <p key={ev.id} className="text-xs" style={{ color: "#7a6a5a" }}>
+                    <span style={{ color: "#4a3a2a" }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} </span>
+                    {ev.message}
+                  </p>
+                ))}
+                {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
+              </div>
+            )}
           </div>
 
           {/* Bot log — host-only, visible when bots are in the game */}
