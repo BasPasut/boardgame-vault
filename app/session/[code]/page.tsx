@@ -689,8 +689,8 @@ function SessionRoom() {
 
   const handleStartBetrayal = async () => {
     if (!dbSession) return;
-    const nonST = players.filter(p => !p.isStoryteller);
-    if (nonST.length < 3) return;
+    // In Betrayal everyone plays — the host is a full participant, not a storyteller.
+    if (players.length < 3) return;
 
     const itemDeck = shuffle(ITEM_CARDS.map(c => c.id));
     const omenDeck = shuffle(OMEN_CARDS.map(c => c.id));
@@ -698,12 +698,12 @@ function SessionRoom() {
     const startingTiles = buildStartingTiles();
     const pools = buildTilePools();
 
-    const turnOrder = [...nonST.map(p => p.id)].sort(() => Math.random() - 0.5);
+    const turnOrder = [...players.map(p => p.id)].sort(() => Math.random() - 0.5);
 
     // Assign characters — respect player selections, fill gaps with random
     const usedCharIds = new Set<string>();
     const playerStates: Record<string, object> = {};
-    nonST.forEach(p => {
+    players.forEach(p => {
       let charId = betrayalCharSelections[p.id];
       if (!charId || usedCharIds.has(charId)) {
         const available = CHARACTERS.filter(c => !usedCharIds.has(c.id));
@@ -717,7 +717,8 @@ function SessionRoom() {
         speed: char.speed, might: char.might,
         sanity: char.sanity, knowledge: char.knowledge,
         items: [],
-        is_alive: true,
+        is_dead: false,
+        is_traitor: false,
       };
     });
 
@@ -1054,12 +1055,17 @@ function SessionRoom() {
                 <div className="text-xs tracking-widest uppercase mb-2" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                   {lang === "en" ? "Character Selections" : "การเลือกตัวละคร"}
                 </div>
-                {players.filter(p => !p.isStoryteller).map(p => {
+                {players.map(p => {
                   const charId = betrayalCharSelections[p.id];
                   const char = charId ? CHARACTERS.find(c => c.id === charId) : null;
                   return (
                     <div key={p.id} className="flex items-center justify-between py-1.5 text-sm" style={{ borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
-                      <span style={{ color: "#e8d5b0" }}>{p.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: "#e8d5b0" }}>{p.name}</span>
+                        {p.isStoryteller && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.12)", color: "#d4af37" }}>Host</span>
+                        )}
+                      </div>
                       <span style={{ color: char ? "#d4af37" : "#5a4a3a" }}>
                         {char ? char.name : (lang === "en" ? "Not chosen" : "ยังไม่เลือก")}
                       </span>
@@ -1069,11 +1075,11 @@ function SessionRoom() {
               </div>
               <button
                 onClick={handleStartBetrayal}
-                disabled={players.filter(p => !p.isStoryteller).length < 3}
+                disabled={players.length < 3}
                 className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
                 style={{ fontFamily: "var(--font-gothic)" }}
               >
-                {players.filter(p => !p.isStoryteller).length < 3
+                {players.length < 3
                   ? (lang === "en" ? "Need at least 3 players" : "ต้องการผู้เล่นอย่างน้อย 3 คน")
                   : `🏚 ${lang === "en" ? "Enter the Mansion" : "เข้าสู่คฤหาสน์"}`}
               </button>
