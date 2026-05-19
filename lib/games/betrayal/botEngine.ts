@@ -261,7 +261,8 @@ async function executeBotTurn(
   }
 
   // ── 1. Move / Explore ───────────────────────────────────────────────────────
-  const movesLeft = botState.speed; // bot uses all speed at once
+  const isRestrained = (cur.restrained_players ?? []).includes(botId);
+  const movesLeft = isRestrained ? Math.max(0, botState.speed - 1) : botState.speed; // rope restraint reduces speed by 1
   const floor = botState.floor;
 
   const unexplored   = getUnexploredDoors(cur.placed_tiles, floor);

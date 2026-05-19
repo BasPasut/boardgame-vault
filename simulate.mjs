@@ -210,6 +210,8 @@ function initGame(numPlayers) {
     current_turn_index: 0,
     turn_phase: "move",
     moves_used: 0,
+    locked_doors: [],
+    restrained_players: [],
     player_states: playerStates,
     event_log: [],
     haunt_objectives: null,
@@ -560,12 +562,14 @@ function executeBotTurn(gs, players, botId) {
 
 function nextTurn(gs) {
   const len = gs.turn_order.length;
+  const currentId = gs.turn_order[gs.current_turn_index];
   let nextIdx = (gs.current_turn_index+1) % len;
   let attempts = 0;
   while (gs.player_states[gs.turn_order[nextIdx]]?.is_dead && attempts<len) {
     nextIdx=(nextIdx+1)%len; attempts++;
   }
-  return {...gs, current_turn_index:nextIdx, turn_phase:"move", moves_used:0, turn_drawn_tiles:[]};
+  const newRestrained = (gs.restrained_players ?? []).filter(id => id !== currentId);
+  return {...gs, current_turn_index:nextIdx, turn_phase:"move", moves_used:0, turn_drawn_tiles:[], restrained_players:newRestrained};
 }
 
 // ─── Run One Full Game ────────────────────────────────────────────────────────

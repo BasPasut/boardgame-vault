@@ -118,6 +118,7 @@ export interface BetrayalGameState {
   moves_used: number;
 
   locked_doors: string[];      // "floor,x,y,dir" — one side of a locked door connection
+  restrained_players: string[]; // player IDs who lose 1 Speed this turn (rope effect)
 
   player_states: Record<string, PlayerGameState>;
   event_log: GameEvent[];
