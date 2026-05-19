@@ -458,6 +458,7 @@ function CharacterCard({ char }: { char: CharacterDefinition }) {
         {!imgErr ? (
           <Image
             src={char.image} alt={char.name} fill
+            sizes="(max-width: 640px) 50vw, 33vw"
             className="object-cover object-top opacity-80"
             onError={() => setImgErr(true)}
           />
@@ -472,17 +473,17 @@ function CharacterCard({ char }: { char: CharacterDefinition }) {
       <div className="p-4 space-y-2">
         <p className="text-xs italic leading-snug mb-3" style={{ color: "#7a6a5a" }}>&ldquo;{char.trait}&rdquo;</p>
         {stats.map(s => (
-          <div key={s.key} className="flex items-center gap-2">
+          <div key={s.key} className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs w-8 flex-shrink-0 font-mono" style={{ color: STAT_COLOR[s.key] }}>{s.label}</span>
-            <div className="flex gap-0.5">
+            <div className="flex flex-wrap gap-0.5 flex-1 min-w-0">
               {Array.from({ length: s.max }, (_, i) => (
-                <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{
+                <div key={i} className="w-2 h-2 rounded-sm flex-shrink-0" style={{
                   background: i < s.value ? STAT_COLOR[s.key] : "rgba(255,255,255,0.06)",
                   border: "1px solid rgba(255,255,255,0.08)",
                 }} />
               ))}
             </div>
-            <span className="text-xs" style={{ color: STAT_COLOR[s.key] }}>{s.value}/{s.max}</span>
+            <span className="text-xs flex-shrink-0" style={{ color: STAT_COLOR[s.key] }}>{s.value}/{s.max}</span>
           </div>
         ))}
       </div>

@@ -591,6 +591,17 @@ function SessionRoom() {
     setJoining(false);
   };
 
+  const handleAddBot = async () => {
+    const botCount = players.filter((p) => p.id.startsWith("bot-")).length;
+    if (botCount >= 4) return; // cap at 4 bots
+    const botId   = `bot-${botCount + 1}-${Date.now()}`;
+    const botName = `Bot ${botCount + 1}`;
+    await supabase.from("players").insert({
+      id: botId, session_code: code, name: botName,
+      player_state: { is_alive: true, is_storyteller: false },
+    });
+  };
+
   const handleAddDemoPlayers = async () => {
     const names = ["Aria", "Ben", "Cora", "Dex", "Eve", "Flynn", "Grace"];
     const existing = players.filter((p) => !p.isStoryteller).length;
@@ -974,10 +985,12 @@ function SessionRoom() {
                       {/* Character portrait */}
                       <div className="w-full aspect-square rounded-lg mb-2 overflow-hidden relative"
                         style={{ background: "rgba(13,10,26,0.8)" }}>
-                        <img
+                        <Image
                           src={char.image}
                           alt={char.name}
-                          className="w-full h-full object-cover object-top"
+                          fill
+                          sizes="(max-width: 640px) 50vw, 33vw"
+                          className="object-cover object-top"
                           style={{ filter: isSelectedByOther ? "grayscale(1)" : "none" }}
                         />
                         <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)" }} />
@@ -1019,26 +1032,39 @@ function SessionRoom() {
           {/* ─── BETRAYAL HOST START ─── */}
           {isHost && dbSession?.game_id === "betrayal-at-house-on-the-hill" && (
             <div className="space-y-3">
-              <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
-                + Add Demo Players (for testing)
-              </button>
+              <div className="flex gap-2">
+                <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary flex-1 py-3 rounded-xl text-sm">
+                  + Demo Players
+                </button>
+                <button
+                  onClick={handleAddBot}
+                  disabled={players.filter(p => p.id.startsWith("bot-")).length >= 4}
+                  className="btn-gothic-secondary flex-1 py-3 rounded-xl text-sm disabled:opacity-40"
+                  style={{ borderColor: "rgba(99,102,241,0.4)", color: "#818cf8" }}
+                  title="Add an AI bot that auto-plays its turns (host only)"
+                >
+                  🤖 Add Bot
+                </button>
+              </div>
               <div className="gothic-card rounded-xl p-4">
                 <div className="text-xs tracking-widest uppercase mb-2" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                   {lang === "en" ? "Character Selections" : "การเลือกตัวละคร"}
                 </div>
                 {players.map(p => {
+                  const isBot = p.id.startsWith("bot-");
                   const charId = betrayalCharSelections[p.id];
                   const char = charId ? CHARACTERS.find(c => c.id === charId) : null;
                   return (
                     <div key={p.id} className="flex items-center justify-between py-1.5 text-sm" style={{ borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
                       <div className="flex items-center gap-2">
-                        <span style={{ color: "#e8d5b0" }}>{p.name}</span>
+                        {isBot && <span className="text-xs" style={{ color: "#6366f1" }}>🤖</span>}
+                        <span style={{ color: isBot ? "#818cf8" : "#e8d5b0" }}>{p.name}</span>
                         {p.isStoryteller && (
                           <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.12)", color: "#d4af37" }}>Host</span>
                         )}
                       </div>
-                      <span style={{ color: char ? "#d4af37" : "#5a4a3a" }}>
-                        {char ? char.name : (lang === "en" ? "Not chosen" : "ยังไม่เลือก")}
+                      <span style={{ color: isBot ? "#6366f1" : char ? "#d4af37" : "#5a4a3a" }}>
+                        {isBot ? "Auto-assigned" : char ? char.name : (lang === "en" ? "Not chosen" : "ยังไม่เลือก")}
                       </span>
                     </div>
                   );

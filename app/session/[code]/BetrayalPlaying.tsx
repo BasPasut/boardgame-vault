@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
+import NextImage from "next/image";
 import { supabase } from "@/lib/supabase";
 import { getLang } from "@/lib/utils/lang";
 import { useAmbientAudio, useSfx } from "@/lib/hooks/useAmbientAudio";
@@ -15,6 +16,7 @@ import {
   buildStartingTiles, tileAt,
 } from "@/lib/games/betrayal/logic/mapEngine";
 import type { Player } from "@/types/game";
+import { useBotEngine } from "@/lib/games/betrayal/botEngine";
 
 // ─── Tile size in px ──────────────────────────────────────────────────────────
 const TILE_PX = 90;
@@ -123,7 +125,7 @@ function MapTile({
           : "1px solid rgba(255,255,255,0.08)",
         borderRadius: 6,
         background: def?.image
-          ? `url(${def.image}) center/cover`
+          ? `url(${def.image}) center/cover no-repeat`
           : "rgba(30,20,10,0.8)",
         boxShadow: isReachable ? "0 0 12px rgba(212,175,55,0.3)" : undefined,
         overflow: "hidden",
@@ -385,11 +387,14 @@ function HauntReveal({ hauntName, isTraitor, objective, onDismiss }: {
       style={{ background: "rgba(0,0,0,0.94)" }}>
       {/* Full-bleed splash image behind content */}
       {!splashErr && (
-        <img
+        <NextImage
           src={splashSrc}
           alt=""
           aria-hidden
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover pointer-events-none"
           style={{ opacity: 0.18, objectPosition: "center top" }}
           onError={() => setSplashErr(true)}
         />
@@ -462,16 +467,20 @@ function CardOverlay({ cardId, onDismiss }: { cardId: string; onDismiss: () => v
           style={{ background: "rgba(13,10,26,0.9)" }}>
           {/* Front art */}
           {card.image && !imgErr && revealed && (
-            <img src={card.image} alt={card.name}
-              className="absolute inset-0 w-full h-full object-cover"
+            <NextImage src={card.image} alt={card.name}
+              fill priority
+              sizes="(max-width: 640px) 100vw, 384px"
+              className="object-cover"
               style={{ opacity: 0.75 }}
               onError={() => setImgErr(true)} />
           )}
           {/* Card back (shown before reveal) */}
           {!revealed && !backErr && (
-            <img src={CARD_BACK[card.type]}
+            <NextImage src={CARD_BACK[card.type]}
               alt="card back"
-              className="absolute inset-0 w-full h-full object-cover"
+              fill priority
+              sizes="(max-width: 640px) 100vw, 384px"
+              className="object-cover"
               onError={() => setBackErr(true)} />
           )}
           {/* Fallback if no back image */}
@@ -572,10 +581,11 @@ function GothicDie({ value, rolling }: { value: number; rolling?: boolean }) {
       }}
     >
       {!err ? (
-        <img
+        <NextImage
           src={DICE_FACES[display]}
           alt={String(display)}
-          className="w-12 h-12 object-contain"
+          width={48} height={48}
+          className="object-contain"
           style={{ transition: "none" }}
           onError={() => setErr(true)}
         />
@@ -997,9 +1007,9 @@ function VictoryScreen({
               <div key={p.id} className="flex items-center gap-3 px-4 py-2.5"
                 style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", opacity: survived ? 1 : 0.5 }}>
                 {ch ? (
-                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0"
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden flex-shrink-0"
                     style={{ border: `2px solid ${ps.is_dead ? "#374151" : playerColor(idx)}` }}>
-                    <img src={ch.image} alt={ch.name} className="w-full h-full object-cover object-top" />
+                    <NextImage src={ch.image} alt={ch.name} fill sizes="64px" className="object-cover object-top" />
                   </div>
                 ) : (
                   <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-white"
@@ -1061,6 +1071,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
+  const [showBotLog, setShowBotLog] = useState(false);
+
+  // Bot engine — runs silently on host's browser, auto-plays bot turns
+  const { botLog, isBotTurn } = useBotEngine({ isHost, gs, players, code });
 
   // Valid attack targets: living players on the same tile, opposing team
   const validAttackTargets = useMemo(() => {
@@ -1403,8 +1417,16 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             </div>
             {/* Current turn */}
             <div className="px-2 py-1 rounded-lg text-xs"
-              style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.15)", color: isMyTurn ? "#d4af37" : "#5a4a3a" }}>
-              {isMyTurn ? "Your turn" : `${currentPlayer?.name ?? "?"}'s turn`}
+              style={{
+                background: isBotTurn ? "rgba(99,102,241,0.10)" : "rgba(212,175,55,0.08)",
+                border: `1px solid ${isBotTurn ? "rgba(99,102,241,0.3)" : isMyTurn ? "rgba(212,175,55,0.3)" : "rgba(212,175,55,0.15)"}`,
+                color: isBotTurn ? "#818cf8" : isMyTurn ? "#d4af37" : "#5a4a3a",
+              }}>
+              {isBotTurn
+                ? `🤖 ${currentPlayer?.name ?? "Bot"} thinking…`
+                : isMyTurn
+                ? "Your turn"
+                : `${currentPlayer?.name ?? "?"}'s turn`}
             </div>
             {/* Mute toggle */}
             <button
@@ -1533,9 +1555,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           {myChar && myState && (
             <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.1)" }}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
+                <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
                   style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${playerColor(myIndex)}` }}>
-                  <img src={myChar.image} alt={myChar.name} className="w-full h-full object-cover" />
+                  <NextImage src={myChar.image} alt={myChar.name} fill priority sizes="80px" className="object-cover" />
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{myChar.name}</p>
@@ -1585,6 +1607,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#7a6a5a" }}>
+                      {p.id.startsWith("bot-") && <span className="mr-1 text-indigo-400">🤖</span>}
                       {p.name}
                       {ps?.is_traitor && <span className="ml-1 text-red-400">⚔</span>}
                       {isDead && <span className="ml-1" style={{ color: "#5a4a3a" }}>eliminated</span>}
@@ -1617,6 +1640,31 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             ))}
             {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
           </div>
+
+          {/* Bot log — host-only, visible when bots are in the game */}
+          {isHost && players.some((p) => p.id.startsWith("bot-")) && (
+            <div className="rounded-xl overflow-hidden flex-shrink-0"
+              style={{ border: "1px solid rgba(99,102,241,0.2)", background: "rgba(10,10,26,0.7)" }}>
+              <button
+                onClick={() => setShowBotLog((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold"
+                style={{ color: "#818cf8", fontFamily: "var(--font-gothic)" }}
+              >
+                <span>🤖 Bot Log {botLog.length > 0 && `(${botLog.length})`}</span>
+                <span style={{ color: "#4a4a8a" }}>{showBotLog ? "▲" : "▼"}</span>
+              </button>
+              {showBotLog && (
+                <div className="px-3 pb-3 space-y-1 max-h-40 overflow-y-auto">
+                  {botLog.length === 0 && (
+                    <p className="text-xs italic" style={{ color: "#3a3a6a" }}>Bots standing by…</p>
+                  )}
+                  {botLog.map((entry, i) => (
+                    <p key={i} className="text-xs leading-snug" style={{ color: "#6366f1" }}>{entry}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </aside>
       </div>
 
