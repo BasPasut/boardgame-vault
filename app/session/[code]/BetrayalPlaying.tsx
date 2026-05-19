@@ -464,8 +464,8 @@ function MansionMap({
             );
           })}
 
-          {/* Unexplored doors */}
-          {unexplored.map(({ x, y }) => {
+          {/* Unexplored doors — only render when tile pool has rooms left for this floor */}
+          {(gs.remaining_tiles[viewFloor]?.length ?? 0) > 0 && unexplored.map(({ x, y }) => {
             const px = (x - minX) * TILE_PX;
             const py = (y - minY) * TILE_PX;
             const canExp = explorable.some((e) => e.x === x && e.y === y);
@@ -490,7 +490,10 @@ function MansionMap({
         <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Omen ({gs.omen_deck.length})</span>
         <span><span className="inline-block w-2 h-2 rounded-full bg-indigo-500 mr-1" />Event ({gs.event_deck.length})</span>
         <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Stairwell</span>
-        <span>🚪 Explore new room</span>
+        {(gs.remaining_tiles[viewFloor]?.length ?? 0) > 0
+          ? <span>🚪 {gs.remaining_tiles[viewFloor].length} room{gs.remaining_tiles[viewFloor].length !== 1 ? "s" : ""} left to explore</span>
+          : <span style={{ color: "#7a6a5a" }}>🚫 No more rooms for this floor</span>
+        }
       </div>
     </div>
   );
@@ -1447,9 +1450,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       } else if (cardId === "ancient-book") {
         updatedState.knowledge = Math.min(updatedState.knowledge + 2, char?.knowledgeMax ?? 8);
         newLog.push(addLog("stat", `${playerName} gained +2 Knowledge from Ancient Book`));
-      } else if (cardId === "healing-salve") {
-        updatedState.might = Math.min(updatedState.might + 2, char?.mightMax ?? 8);
-        newLog.push(addLog("stat", `${playerName} restored +2 Might from Healing Salve`));
       }
       patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
     }
@@ -1482,6 +1482,35 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         }
       } else if (cardId === "omen-dog") {
         updatedState.speed = Math.min(myState.speed + 1, char?.speedMax ?? 8);
+        newLog.push(addLog("stat", `${playerName} gained +1 Speed from the Spectral Hound`));
+      } else if (cardId === "omen-key") {
+        // Skeleton Key: opens all currently locked doors
+        if ((gs.locked_doors ?? []).length > 0) {
+          patch.locked_doors = [];
+          newLog.push(addLog("system", `${playerName} used the Skeleton Key — all locked doors are now open 🔓`));
+        } else {
+          newLog.push(addLog("system", `${playerName} found the Skeleton Key (no locked doors currently)`));
+        }
+      } else if (cardId === "omen-crystal-ball") {
+        // Crystal Ball: reveal top card of each remaining deck
+        const topItem  = gs.item_deck[0]  ? getCard(gs.item_deck[0])?.name  : "empty";
+        const topOmen  = gs.omen_deck[0]  ? getCard(gs.omen_deck[0])?.name  : "empty";
+        const topEvent = gs.event_deck[0] ? getCard(gs.event_deck[0])?.name : "empty";
+        newLog.push(addLog("system", `🔮 Crystal Ball: Item deck top → ${topItem} | Omen deck top → ${topOmen} | Event deck top → ${topEvent}`));
+      } else if (cardId === "omen-ring") {
+        // Mourning Ring: reveal one player's role — only meaningful after haunt starts
+        if (gs.phase === "haunt") {
+          const others = gs.turn_order.filter(id => id !== myPlayerId && !gs.player_states[id]?.is_dead);
+          if (others.length > 0) {
+            const revealId = others[Math.floor(Math.random() * others.length)];
+            const revealedPs = gs.player_states[revealId];
+            const revealedName = players.find(p => p.id === revealId)?.name ?? revealId;
+            const role = revealedPs?.is_traitor ? "⚔ TRAITOR" : "🕯 Hero";
+            newLog.push(addLog("system", `💍 Mourning Ring reveals: ${revealedName} is a ${role}`));
+          }
+        } else {
+          newLog.push(addLog("system", `💍 Mourning Ring: roles will be revealed once the Haunt begins`));
+        }
       } else if (cardId === "omen-book" && gs.item_deck.length > 0) {
         // Draw 1 item card immediately
         const itemId = gs.item_deck[0];
@@ -2230,12 +2259,33 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                         const rolls = rollDice(Math.max(1, myState!.speed));
                         const total = rolls.reduce((a, b) => a + b, 0);
                         setDiceResult({ values: rolls, label: total >= 4
-                          ? `🏃 Escape Roll — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
-                          : `🏃 Escape Roll — ${total} < 4. Not fast enough — try again next turn.` });
+                          ? `🏃 Garden Escape — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
+                          : `🏃 Garden Escape — ${total} < 4. Not fast enough — try again next turn.` });
                       }}
                       className="flex-1 py-2 rounded-xl text-sm font-bold"
                       style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
-                      🏃 Attempt Escape (Speed 4+)
+                      🏃 Garden Escape (Speed 4+)
+                    </button>
+                  );
+                })()}
+                {/* Vault escape — haunt #4: Might 4+ to break out through the Vault */}
+                {gs.phase === "haunt" && isMyTurn && !myState?.is_traitor && gs.turn_phase === "action" && gs.haunt_number === 4 && (() => {
+                  const onVault = myState && gs.placed_tiles.find(t =>
+                    t.tile_id === "vault" && t.floor === myState.floor && t.x === myState.x && t.y === myState.y
+                  );
+                  if (!onVault) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        const rolls = rollDice(Math.max(1, myState!.might));
+                        const total = rolls.reduce((a, b) => a + b, 0);
+                        setDiceResult({ values: rolls, label: total >= 4
+                          ? `💪 Vault Break — ${total} ≥ 4! You broke through! Declare Heroes Win if 3 heroes have escaped.`
+                          : `💪 Vault Break — ${total} < 4. Not strong enough — try again next turn.` });
+                      }}
+                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      💪 Vault Break (Might 4+)
                     </button>
                   );
                 })()}
