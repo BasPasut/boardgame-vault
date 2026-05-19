@@ -379,6 +379,16 @@ function SessionRoom() {
       : {};
   const myBetrayalCharId = myPlayerId ? betrayalCharSelections[myPlayerId] ?? null : null;
 
+  // ── Player-limit enforcement ─────────────────────────────────────────────
+  // Max includes the host/storyteller slot. New joiners are blocked at capacity.
+  const GAME_PLAYER_LIMITS: Record<string, number> = {
+    "shadows-over-thornwick": 16,          // 1 storyteller + up to 15 players
+    "hues-and-cues": 10,
+    "betrayal-at-house-on-the-hill": 6,
+  };
+  const maxPlayers = dbSession ? (GAME_PLAYER_LIMITS[dbSession.game_id] ?? 20) : 20;
+  const isRoomFull = players.length >= maxPlayers;
+
   // Derived
   const myPlayer = players.find((p) => p.id === myPlayerId) ?? null;
   const isHost = myPlayer?.isStoryteller ?? isHostParam;
@@ -587,8 +597,17 @@ function SessionRoom() {
 
   // ---------- Actions ----------
   const handleJoin = async () => {
-    if (!joinName.trim() || joining) return;
+    if (!joinName.trim() || joining || isRoomFull) return;
     setJoining(true);
+    // Re-check capacity against live player count to avoid race conditions
+    const { count } = await supabase
+      .from("players")
+      .select("*", { count: "exact", head: true })
+      .eq("session_code", code);
+    if (count !== null && count >= maxPlayers) {
+      setJoining(false);
+      return; // Room filled up while we were typing
+    }
     const id = generatePlayerId();
     const { error } = await supabase.from("players").insert({
       id, session_code: code, name: joinName.trim(),
@@ -902,6 +921,20 @@ function SessionRoom() {
 
           {!joined && (
             <div className="gothic-card rounded-2xl p-6 mb-6">
+              {isRoomFull ? (
+                <div className="text-center py-2 space-y-2">
+                  <p className="text-3xl">🚪</p>
+                  <p className="font-bold" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                    {lang === "en" ? "Room Full" : "ห้องเต็มแล้ว"}
+                  </p>
+                  <p className="text-sm" style={{ color: "#5a4a3a" }}>
+                    {lang === "en"
+                      ? `This session has reached its limit of ${maxPlayers} players.`
+                      : `ห้องนี้มีผู้เล่นครบ ${maxPlayers} คนแล้ว`}
+                  </p>
+                </div>
+              ) : (
+                <>
               <label className="block text-sm mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.yourName}</label>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -917,12 +950,14 @@ function SessionRoom() {
                   {joining ? "..." : t.join}
                 </button>
               </div>
+                </>
+              )}
             </div>
           )}
 
           <div className="gothic-card rounded-2xl p-6 mb-6">
             <div className="text-sm mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-              {t.players} ({players.length})
+              {t.players} ({players.length}/{maxPlayers})
             </div>
             <div className="space-y-2">
               {players.map((p) => (

@@ -234,7 +234,7 @@ function MansionMap({
   }, [players, gs.player_states, viewFloor]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 flex-1 min-h-0">
       {/* Floor tabs */}
       <div className="flex gap-1.5">
         {([2, 1, 0] as Floor[]).map((f) => (
@@ -252,11 +252,10 @@ function MansionMap({
         ))}
       </div>
 
-      {/* Map viewport */}
-      <div className="rounded-xl overflow-auto" style={{
+      {/* Map viewport — capped on mobile, fills column on desktop */}
+      <div className="rounded-xl overflow-auto flex-1 min-h-0 max-h-[52vh] lg:max-h-none" style={{
         background: FLOOR_COLORS[viewFloor],
         border: "1px solid rgba(212,175,55,0.15)",
-        maxHeight: "55vh",
         minHeight: 200,
       }}>
         <div className="relative" style={{ width: worldW, height: worldH, minWidth: "100%" }}>
@@ -925,7 +924,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const showHauntReveal = gs.phase === "haunt" && !hauntDismissed && gs.haunt_number != null;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0a0708" }}>
+    <div className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden" style={{ background: "#0a0708" }}>
       {/* Haunt reveal overlay */}
       {showHauntReveal && gs.haunt_objectives && (
         <HauntReveal
@@ -950,7 +949,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       {combatResult && <CombatOverlay result={combatResult} onDismiss={() => setCombatResult(null)} />}
 
       {/* Header */}
-      <div className="sticky top-0 z-20" style={{ background: "rgba(10,7,8,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.12)" }}>
+      <div className="sticky top-0 z-20 flex-shrink-0" style={{ background: "rgba(10,7,8,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.12)" }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs" style={{ color: "#5a4a3a" }}>Betrayal at House on the Hill</p>
@@ -983,152 +982,205 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         </div>
       </div>
 
-      <div className="flex-1 max-w-2xl mx-auto px-3 py-3 w-full flex flex-col gap-3">
+      {/* ── Split layout: map | sidebar ───────────────────────────────────── */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
 
-        {/* Objective (haunt phase) */}
-        {gs.phase === "haunt" && myObjective && hauntDismissed && (
-          <div className="px-3 py-2 rounded-lg text-xs" style={{
-            background: myState?.is_traitor ? "rgba(239,68,68,0.08)" : "rgba(212,175,55,0.06)",
-            border: `1px solid ${myState?.is_traitor ? "rgba(239,68,68,0.2)" : "rgba(212,175,55,0.15)"}`,
-            color: myState?.is_traitor ? "#ef4444" : "#c8a84a",
-          }}>
-            <span className="font-bold">{myState?.is_traitor ? "Your Objective: " : "Heroes' Objective: "}</span>
-            {myObjective}
-          </div>
-        )}
+        {/* ── Map column ─────────────────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 flex flex-col gap-2 p-3 overflow-hidden">
 
-        {/* Map */}
-        <MansionMap
-          gs={gs} players={players} myPlayerId={myPlayerId}
-          myState={myState} isMyTurn={isMyTurn}
-          onMove={handleMove} onRevealTile={handleRevealTile}
-        />
-
-        {/* Action bar */}
-        {isMyTurn && (
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={handleEndTurn}
-                className="flex-1 py-2 rounded-xl text-sm font-bold"
-                style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
-                End Turn
-              </button>
-
-              {/* Attack button — haunt phase, action phase, enemies on same tile */}
-              {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && (
-                <button onClick={() => setShowAttackTargets(true)}
-                  className="flex-1 py-2 rounded-xl text-sm font-bold"
-                  style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
-                  ⚔ Attack
-                </button>
-              )}
-
-              {/* Win declaration buttons */}
-              {gs.phase === "haunt" && myState?.is_traitor && (
-                <button onClick={() => handleDeclareWinner("traitor")}
-                  className="px-4 py-2 rounded-xl text-sm font-bold"
-                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}>
-                  Declare Victory
-                </button>
-              )}
-              {gs.phase === "haunt" && !myState?.is_traitor && (
-                <button onClick={() => handleDeclareWinner("heroes")}
-                  className="px-4 py-2 rounded-xl text-sm font-bold"
-                  style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
-                  Heroes Win
-                </button>
-              )}
+          {/* Objective banner (haunt phase) */}
+          {gs.phase === "haunt" && myObjective && hauntDismissed && (
+            <div className="flex-shrink-0 px-3 py-2 rounded-lg text-xs" style={{
+              background: myState?.is_traitor ? "rgba(239,68,68,0.08)" : "rgba(212,175,55,0.06)",
+              border: `1px solid ${myState?.is_traitor ? "rgba(239,68,68,0.2)" : "rgba(212,175,55,0.15)"}`,
+              color: myState?.is_traitor ? "#ef4444" : "#c8a84a",
+            }}>
+              <span className="font-bold">{myState?.is_traitor ? "⚔ Your Objective: " : "🕯 Heroes' Objective: "}</span>
+              {myObjective}
             </div>
+          )}
 
-            {/* Target selector */}
-            {showAttackTargets && (
-              <div className="rounded-xl p-3 space-y-2"
-                style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(239,68,68,0.25)" }}>
-                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
-                  ⚔ Choose target
-                </p>
-                {validAttackTargets.map((target) => {
-                  const tState = gs.player_states[target.id];
-                  const tChar = tState ? getCharacter(tState.character_id) : null;
-                  return (
-                    <button key={target.id}
-                      onClick={() => handleAttack(target.id)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all"
-                      style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#e8d5b0" }}>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)" }}>{target.name}</p>
-                        {tChar && (
-                          <p className="text-xs" style={{ color: "#7a6a5a" }}>
-                            {tChar.name} · Might {tState?.might ?? "?"}
-                          </p>
-                        )}
-                      </div>
-                      <span className="text-sm" style={{ color: "#ef4444" }}>Roll Dice →</span>
-                    </button>
-                  );
-                })}
-                <button onClick={() => setShowAttackTargets(false)}
-                  className="w-full py-1.5 rounded-lg text-xs"
-                  style={{ color: "#5a4a3a" }}>
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Character panel */}
-        {myChar && myState && (
-          <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.1)" }}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
-                style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${playerColor(myIndex)}` }}>
-                <img src={myChar.image} alt={myChar.name} className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <p className="font-bold text-sm" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{myChar.name}</p>
-                <p className="text-xs italic" style={{ color: "#5a4a3a" }}>{myChar.trait}</p>
-              </div>
-              {myState.is_traitor && (
-                <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}>Traitor</span>
-              )}
-            </div>
-            <div className="space-y-1">
-              <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={STAT_COLOR.speed} />
-              <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={STAT_COLOR.might} />
-              <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={STAT_COLOR.sanity} />
-              <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={STAT_COLOR.knowledge} />
-            </div>
-            {/* Items */}
-            {myState.items.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {myState.items.map((itemId) => {
-                  const item = getCard(itemId);
-                  return item ? (
-                    <div key={itemId} className="px-2 py-1 rounded-lg text-xs"
-                      style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
-                      {item.name}
-                    </div>
-                  ) : null;
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Event log */}
-        <div className="rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto"
-          style={{ background: "rgba(13,10,26,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
-          <p className="text-xs font-bold mb-1" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>Event Log</p>
-          {gs.event_log.slice().reverse().map((ev) => (
-            <p key={ev.id} className="text-xs" style={{ color: "#7a6a5a" }}>
-              <span style={{ color: "#4a3a2a" }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} </span>
-              {ev.message}
-            </p>
-          ))}
-          {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
+          {/* Map — fills remaining column height on desktop */}
+          <MansionMap
+            gs={gs} players={players} myPlayerId={myPlayerId}
+            myState={myState} isMyTurn={isMyTurn}
+            onMove={handleMove} onRevealTile={handleRevealTile}
+          />
         </div>
+
+        {/* ── Sidebar ────────────────────────────────────────────────────── */}
+        <aside
+          className="flex-shrink-0 lg:w-80 xl:w-96 flex flex-col gap-3 p-3 overflow-y-auto border-t lg:border-t-0 lg:border-l max-h-[48vh] lg:max-h-none"
+          style={{ borderColor: "rgba(212,175,55,0.08)" }}
+        >
+          {/* Phase indicator */}
+          <div className="flex-shrink-0 flex items-center justify-between">
+            <span className="text-xs tracking-widest uppercase" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+              {gs.phase === "haunt" ? `Haunt #${gs.haunt_number}` : "Explore Phase"}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{
+              background: gs.turn_phase === "move" ? "rgba(59,130,246,0.15)" : gs.turn_phase === "action" ? "rgba(239,68,68,0.12)" : "rgba(212,175,55,0.08)",
+              color: gs.turn_phase === "move" ? "#3b82f6" : gs.turn_phase === "action" ? "#ef4444" : "#7a6a5a",
+              border: `1px solid ${gs.turn_phase === "move" ? "rgba(59,130,246,0.25)" : gs.turn_phase === "action" ? "rgba(239,68,68,0.2)" : "rgba(212,175,55,0.1)"}`,
+            }}>
+              {isMyTurn ? (gs.turn_phase === "move" ? "Move" : gs.turn_phase === "action" ? "Action" : "Done") : `${currentPlayer?.name ?? "?"}'s turn`}
+            </span>
+          </div>
+
+          {/* Action bar */}
+          {isMyTurn && (
+            <div className="flex-shrink-0 flex flex-col gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={handleEndTurn}
+                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                  End Turn
+                </button>
+
+                {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && (
+                  <button onClick={() => setShowAttackTargets(true)}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                    ⚔ Attack
+                  </button>
+                )}
+                {gs.phase === "haunt" && myState?.is_traitor && (
+                  <button onClick={() => handleDeclareWinner("traitor")}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}>
+                    Declare Victory
+                  </button>
+                )}
+                {gs.phase === "haunt" && !myState?.is_traitor && (
+                  <button onClick={() => handleDeclareWinner("heroes")}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
+                    Heroes Win
+                  </button>
+                )}
+              </div>
+
+              {showAttackTargets && (
+                <div className="rounded-xl p-3 space-y-2"
+                  style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                    ⚔ Choose target
+                  </p>
+                  {validAttackTargets.map((target) => {
+                    const tState = gs.player_states[target.id];
+                    const tChar = tState ? getCharacter(tState.character_id) : null;
+                    return (
+                      <button key={target.id}
+                        onClick={() => handleAttack(target.id)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left"
+                        style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#e8d5b0" }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)" }}>{target.name}</p>
+                          {tChar && <p className="text-xs" style={{ color: "#7a6a5a" }}>{tChar.name} · Might {tState?.might ?? "?"}</p>}
+                        </div>
+                        <span className="text-sm flex-shrink-0" style={{ color: "#ef4444" }}>Roll →</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setShowAttackTargets(false)}
+                    className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* My character panel */}
+          {myChar && myState && (
+            <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.1)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
+                  style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${playerColor(myIndex)}` }}>
+                  <img src={myChar.image} alt={myChar.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{myChar.name}</p>
+                  <p className="text-xs italic truncate" style={{ color: "#5a4a3a" }}>{myChar.trait}</p>
+                </div>
+                {myState.is_traitor && (
+                  <span className="ml-auto flex-shrink-0 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}>Traitor</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={STAT_COLOR.speed} />
+                <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={STAT_COLOR.might} />
+                <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={STAT_COLOR.sanity} />
+                <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={STAT_COLOR.knowledge} />
+              </div>
+              {myState.items.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {myState.items.map((itemId) => {
+                    const item = getCard(itemId);
+                    return item ? (
+                      <div key={itemId} className="px-2 py-1 rounded-lg text-xs"
+                        style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}>
+                        {item.name}
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* All players summary */}
+          <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,10,26,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+              All Players
+            </p>
+            {players.map((p, idx) => {
+              const ps = gs.player_states[p.id];
+              const ch = ps ? getCharacter(ps.character_id) : null;
+              const isDead = ps?.is_dead ?? false;
+              return (
+                <div key={p.id} className="flex items-center gap-2"
+                  style={{ opacity: isDead ? 0.4 : 1 }}>
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                    style={{ background: isDead ? "#374151" : playerColor(idx), fontSize: 10, fontWeight: "bold" }}>
+                    {isDead ? "✝" : p.name[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#7a6a5a" }}>
+                      {p.name}
+                      {ps?.is_traitor && <span className="ml-1 text-red-400">⚔</span>}
+                      {isDead && <span className="ml-1" style={{ color: "#5a4a3a" }}>eliminated</span>}
+                    </p>
+                    {ch && ps && !isDead && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-xs" style={{ color: "#5a4a3a" }}>{ch.name}</span>
+                        <span className="ml-1 text-xs" style={{ color: STAT_COLOR.might }}>⚔{ps.might}</span>
+                        <span className="text-xs" style={{ color: STAT_COLOR.sanity }}>◈{ps.sanity}</span>
+                      </div>
+                    )}
+                  </div>
+                  {p.id === currentPlayerId && !isDead && (
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: "#d4af37" }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Event log */}
+          <div className="rounded-xl p-3 space-y-1 flex-1 min-h-0 overflow-y-auto"
+            style={{ background: "rgba(13,10,26,0.6)", border: "1px solid rgba(255,255,255,0.05)", minHeight: 80 }}>
+            <p className="text-xs font-bold mb-1" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>Event Log</p>
+            {gs.event_log.slice().reverse().map((ev) => (
+              <p key={ev.id} className="text-xs" style={{ color: "#7a6a5a" }}>
+                <span style={{ color: "#4a3a2a" }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} </span>
+                {ev.message}
+              </p>
+            ))}
+            {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
+          </div>
+        </aside>
       </div>
     </div>
   );
