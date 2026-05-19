@@ -1169,6 +1169,20 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const myState = myPlayerId ? gs.player_states[myPlayerId] ?? null : null;
   const myChar = myState ? getCharacter(myState.character_id) : null;
 
+  // Character dies if either Might OR Sanity hits 0
+  const isDead = (might: number, sanity: number) => might <= 0 || sanity <= 0;
+
+  // Effective attack Might includes weapon item bonuses
+  const getAttackMight = (state: typeof myState) => {
+    if (!state) return 1;
+    let bonus = 0;
+    const items = state.items ?? [];
+    if (items.includes("axe"))                 bonus += 2;
+    if (items.includes("knife"))               bonus += 1;
+    if (items.includes("sacrificial-dagger")) bonus += 3;
+    return Math.max(1, state.might + bonus);
+  };
+
   const currentPlayerId = gs.turn_order[gs.current_turn_index] ?? null;
   const isMyTurn = currentPlayerId === myPlayerId;
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
@@ -1241,9 +1255,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     playSfx("/audio/betrayal/sfx/footstep.mp3");
     await updateGs(patch);
 
-    // Room card trigger — only once per tile per turn
+    // Room card trigger — only once per tile ever (permanent per-player)
     const tileKey = `${floor},${x},${y}`;
-    const alreadyDrawn = (gs.turn_drawn_tiles ?? []).includes(tileKey);
+    const alreadyDrawn = (myState.drawn_tiles ?? []).includes(tileKey);
     if (!alreadyDrawn && def?.type && def.type !== "normal" && def.type !== "stairwell") {
       let cardId: string | null = null;
       if (def.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
@@ -1285,19 +1299,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const newRemaining = { ...gs.remaining_tiles, [floor]: newPool };
     const newLog = [...gs.event_log, addLog("tile_reveal", `${players.find(p => p.id === myPlayerId)?.name} discovered ${getTile(tileId)?.name}`)];
 
-    // Move player into new tile
-    const newPlayerStates = {
-      ...gs.player_states,
-      [myPlayerId!]: { ...myState, x, y, floor },
-    };
-
     const tileKey = `${floor},${x},${y}`;
     const newDef = getTile(tileId);
     const willDrawCard = !!(newDef?.type && newDef.type !== "normal" && newDef.type !== "stairwell");
-    // Pre-mark as drawn so entering again later in the same turn won't re-trigger
+    // Permanently mark this tile as drawn in the player's own state
     const newDrawnTiles = willDrawCard
-      ? [...new Set([...(gs.turn_drawn_tiles ?? []), tileKey])]
-      : [...(gs.turn_drawn_tiles ?? [])];
+      ? [...new Set([...(myState.drawn_tiles ?? []), tileKey])]
+      : [...(myState.drawn_tiles ?? [])];
+
+    // Move player into new tile
+    const newPlayerStates = {
+      ...gs.player_states,
+      [myPlayerId!]: { ...myState, x, y, floor, drawn_tiles: newDrawnTiles },
+    };
 
     playSfx("/audio/betrayal/sfx/tile-reveal.mp3");
     await updateGs({
@@ -1307,7 +1321,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       moves_used: myState.speed, // exploring costs all remaining moves
       turn_phase: "action",
       event_log: newLog.slice(-30),
-      turn_drawn_tiles: newDrawnTiles,
     });
 
     // Trigger card draw for the newly revealed tile
@@ -1331,22 +1344,34 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
     const newLog = [...gs.event_log, addLog("card_draw", `${playerName} drew ${getCard(cardId)?.name}`)];
 
-    // Mark this tile as drawn from this turn
+    // Permanently mark this tile as drawn in the player's own state
     const tileKey = `${myState.floor},${myState.x},${myState.y}`;
-    const newDrawnTiles = [...new Set([...(gs.turn_drawn_tiles ?? []), tileKey])];
+    const newDrawnTiles = [...new Set([...(myState.drawn_tiles ?? []), tileKey])];
 
     let patch: Partial<BetrayalGameState> = {
       [deckKey]: newDeck,
       [discardKey]: newDiscard,
       event_log: newLog.slice(-30),
-      turn_drawn_tiles: newDrawnTiles,
     };
 
     // ── Item card ──────────────────────────────────────────────────────────
     if (cardType === "item") {
       playSfx("/audio/betrayal/sfx/item-pickup.mp3");
       const newItems = [...(myState.items ?? []), cardId];
-      patch.player_states = { ...gs.player_states, [myPlayerId!]: { ...myState, items: newItems } };
+      let updatedState = { ...myState, items: newItems, drawn_tiles: newDrawnTiles };
+      // Apply immediate pickup stat bonuses
+      const char = myChar;
+      if (cardId === "holy-symbol") {
+        updatedState.sanity = Math.min(updatedState.sanity + 2, char?.sanityMax ?? 8);
+        newLog.push(addLog("stat", `${playerName} gained +2 Sanity from Holy Symbol`));
+      } else if (cardId === "ancient-book") {
+        updatedState.knowledge = Math.min(updatedState.knowledge + 2, char?.knowledgeMax ?? 8);
+        newLog.push(addLog("stat", `${playerName} gained +2 Knowledge from Ancient Book`));
+      } else if (cardId === "healing-salve") {
+        updatedState.might = Math.min(updatedState.might + 2, char?.mightMax ?? 8);
+        newLog.push(addLog("stat", `${playerName} restored +2 Might from Healing Salve`));
+      }
+      patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
     }
 
     // ── Omen card ──────────────────────────────────────────────────────────
@@ -1354,23 +1379,36 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       playSfx("/audio/betrayal/sfx/omen-draw.mp3");
 
       // Apply immediate stat effects for this omen
-      let updatedState = { ...myState };
+      let updatedState = { ...myState, drawn_tiles: newDrawnTiles };
       const char = myChar;
       if (cardId === "omen-candle") {
         updatedState.knowledge = Math.min(myState.knowledge + 1, char?.knowledgeMax ?? 8);
       } else if (cardId === "omen-girl") {
         updatedState.sanity = Math.max(myState.sanity - 1, 0);
+        updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
+        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
       } else if (cardId === "omen-mask") {
         updatedState.might = Math.max(myState.might - 1, 0);
         updatedState.knowledge = Math.min(myState.knowledge + 2, char?.knowledgeMax ?? 8);
+        updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
+        if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
+      } else if (cardId === "omen-dog") {
+        updatedState.speed = Math.min(myState.speed + 1, char?.speedMax ?? 8);
       }
 
       // omen-skull: all players lose 1 sanity
       if (cardId === "omen-skull") {
         const allStates = { ...gs.player_states };
         for (const pid of Object.keys(allStates)) {
-          allStates[pid] = { ...allStates[pid], sanity: Math.max(allStates[pid].sanity - 1, 0) };
+          const newSanity = Math.max(allStates[pid].sanity - 1, 0);
+          allStates[pid] = {
+            ...allStates[pid],
+            sanity: newSanity,
+            is_dead: isDead(allStates[pid].might, newSanity),
+          };
         }
+        // Also record drawn_tiles for current player
+        allStates[myPlayerId!] = { ...allStates[myPlayerId!], drawn_tiles: newDrawnTiles };
         patch.player_states = allStates;
       } else {
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1423,7 +1461,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     if (cardType === "event") {
       playSfx("/audio/betrayal/sfx/ghost-ambient.mp3");
       const char = myChar;
-      let updatedState = { ...myState };
+      let updatedState = { ...myState, drawn_tiles: newDrawnTiles };
 
       if (cardId === "ev-dark-vision") {
         const roll = rollDice(2);
@@ -1433,7 +1471,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           newLog.push(addLog("stat", `${playerName} gained +1 Knowledge from Dark Vision (rolled ${total})`));
         } else {
           updatedState.sanity = Math.max(myState.sanity - 1, 0);
+          updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Dark Vision (rolled ${total})`));
+          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
         }
         setDiceResult({ values: roll, label: `Dark Vision — rolled ${total}` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1453,7 +1493,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           newLog.push(addLog("stat", `${playerName} found an item from Writing on the Wall (rolled ${total})`));
         } else if (total < 3) {
           updatedState.sanity = Math.max(myState.sanity - 1, 0);
+          updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 1 Sanity from Writing on the Wall (rolled ${total})`));
+          if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
         }
         setDiceResult({ values: roll, label: `Writing on the Wall — rolled ${total}` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1461,16 +1503,23 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         const floorStates = { ...gs.player_states };
         for (const pid of Object.keys(floorStates)) {
           if (floorStates[pid].floor === myState.floor) {
-            floorStates[pid] = { ...floorStates[pid], sanity: Math.max(floorStates[pid].sanity - 1, 0) };
+            const newSanity = Math.max(floorStates[pid].sanity - 1, 0);
+            floorStates[pid] = {
+              ...floorStates[pid],
+              sanity: newSanity,
+              is_dead: isDead(floorStates[pid].might, newSanity),
+            };
           }
         }
+        // Record drawn_tiles for current player
+        floorStates[myPlayerId!] = { ...floorStates[myPlayerId!], drawn_tiles: newDrawnTiles };
         newLog.push(addLog("stat", `Everyone on floor ${myState.floor} lost 1 Sanity (Screaming Portrait)`));
         patch.player_states = floorStates;
       } else if (cardId === "ev-falling") {
         const roll = rollDice(2);
         const total = roll.reduce((a, b) => a + b, 0);
         updatedState.might = Math.max(myState.might - total, 0);
-        updatedState.is_dead = updatedState.might <= 0;
+        updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
         newLog.push(addLog("stat", `${playerName} lost ${total} Might from Falling`));
         setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
@@ -1481,7 +1530,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         const total = roll.reduce((a, b) => a + b, 0);
         if (total <= 4) {
           updatedState.might = Math.max(myState.might - 2, 0);
-          updatedState.is_dead = updatedState.might <= 0;
+          updatedState.is_dead = isDead(updatedState.might, updatedState.sanity);
           newLog.push(addLog("stat", `${playerName} lost 2 Might from The Smell (rolled ${total})`));
           if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
           else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
@@ -1491,7 +1540,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         setDiceResult({ values: roll, label: `The Smell — rolled ${total}` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-discovery") {
-        // Draw up to 2 item cards; player keeps both (simplified)
+        // Draw up to 2 item cards; player keeps both (simplified from "keep one")
         const drawn: string[] = [];
         let itemDeck = [...gs.item_deck];
         for (let i = 0; i < 2 && itemDeck.length > 0; i++) {
@@ -1505,7 +1554,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         }
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-locked-door") {
+        // Still write drawn_tiles even for flavor-only cards
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
         newLog.push(addLog("system", `Locked Door: one exit in this room is sealed (Might 4+ or Skeleton Key to open)`));
+      } else {
+        // Fallback: still persist drawn_tiles
+        patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       }
       patch.event_log = newLog.slice(-30);
     }
@@ -1520,8 +1574,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const targetState = gs.player_states[targetId];
     if (!targetState || targetState.is_dead) return;
 
-    // Roll Might dice for both sides (each die: 0-2)
-    const attackerRolls = rollDice(Math.max(1, myState.might));
+    // Roll Might dice — attacker gets weapon item bonuses, defender uses base Might
+    const attackerRolls = rollDice(getAttackMight(myState));
     const defenderRolls = rollDice(Math.max(1, targetState.might));
     const attackTotal = attackerRolls.reduce((a, b) => a + b, 0);
     const defendTotal = defenderRolls.reduce((a, b) => a + b, 0);
@@ -1540,9 +1594,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       newPlayerStates[targetId] = {
         ...targetState,
         might: newMight,
-        is_dead: newMight <= 0,
+        is_dead: isDead(newMight, targetState.sanity),
       };
-      if (newMight <= 0) playSfx("/audio/betrayal/sfx/scream.mp3");
+      // Sacrificial Dagger costs 1 Sanity per use
+      if (myState.items?.includes("sacrificial-dagger")) {
+        const newSanity = Math.max(0, myState.sanity - 1);
+        newPlayerStates[myPlayerId!] = {
+          ...myState,
+          sanity: newSanity,
+          is_dead: isDead(myState.might, newSanity),
+        };
+      }
+      if (isDead(newMight, targetState.sanity)) playSfx("/audio/betrayal/sfx/scream.mp3");
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else if (defendTotal > attackTotal) {
       winner = "defender";
@@ -1551,9 +1614,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       newPlayerStates[myPlayerId!] = {
         ...myState,
         might: newMight,
-        is_dead: newMight <= 0,
+        is_dead: isDead(newMight, myState.sanity),
       };
-      if (newMight <= 0) playSfx("/audio/betrayal/sfx/scream.mp3");
+      if (isDead(newMight, myState.sanity)) playSfx("/audio/betrayal/sfx/scream.mp3");
       else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
     } else {
       playSfx("/audio/betrayal/sfx/dice-roll.mp3");
@@ -1602,7 +1665,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       current_turn_index: nextIndex,
       turn_phase: "move",
       moves_used: 0,
-      turn_drawn_tiles: [],
     });
   }, [isMyTurn, gs, updateGs]);
 

@@ -82,6 +82,8 @@ export interface PlayerGameState {
   items: string[];   // card ids
   is_dead: boolean;
   is_traitor: boolean;
+  // Permanent list of "floor,x,y" keys this player has already drawn a card from
+  drawn_tiles: string[];
 }
 
 export interface GameEvent {

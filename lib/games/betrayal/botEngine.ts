@@ -69,6 +69,17 @@ async function writeGs(code: string, gs: BetrayalGameState) {
   await supabase.from("sessions").update({ game_state: gs }).eq("code", code);
 }
 
+const isDead = (might: number, sanity: number) => might <= 0 || sanity <= 0;
+
+function getAttackMight(state: PlayerGameState): number {
+  let bonus = 0;
+  const items = state.items ?? [];
+  if (items.includes("axe"))                bonus += 2;
+  if (items.includes("knife"))              bonus += 1;
+  if (items.includes("sacrificial-dagger")) bonus += 3;
+  return Math.max(1, state.might + bonus);
+}
+
 /** Advance `current_turn_index`, skipping eliminated players. */
 function nextTurnGs(gs: BetrayalGameState): BetrayalGameState {
   const len = gs.turn_order.length;
@@ -78,7 +89,7 @@ function nextTurnGs(gs: BetrayalGameState): BetrayalGameState {
     nextIdx = (nextIdx + 1) % len;
     attempts++;
   }
-  return { ...gs, current_turn_index: nextIdx, turn_phase: "move", moves_used: 0, turn_drawn_tiles: [] };
+  return { ...gs, current_turn_index: nextIdx, turn_phase: "move", moves_used: 0 };
 }
 
 // ─── Inline card resolution ───────────────────────────────────────────────────
@@ -113,17 +124,45 @@ function resolveCardForBot(
     event_log:    newLog.slice(-30),
   };
 
-  // Item — add to bot inventory
+  // Item — add to inventory + apply pickup stat bonuses
   if (card.type === "item") {
     const newItems = [...(botState.items ?? []), cardId];
-    patch.player_states = {
-      ...gs.player_states,
-      [botId]: { ...botState, items: newItems },
-    };
+    let updatedBot = { ...botState, items: newItems };
+    if (cardId === "holy-symbol")  updatedBot.sanity    = Math.min(updatedBot.sanity    + 2, 8);
+    if (cardId === "ancient-book") updatedBot.knowledge  = Math.min(updatedBot.knowledge + 2, 8);
+    if (cardId === "healing-salve") updatedBot.might     = Math.min(updatedBot.might     + 2, 8);
+    pushBotLog(`Picked up ${card.name}`);
+    patch.player_states = { ...gs.player_states, [botId]: updatedBot };
   }
 
-  // Omen — haunt roll (only if haunt hasn't already started)
+  // Omen — apply stat effects then haunt roll
   if (card.type === "omen") {
+    // Omen stat effects (applied regardless of haunt state)
+    const existingPS = (patch.player_states ?? gs.player_states) as Record<string, PlayerGameState>;
+    let updatedBot = { ...(existingPS[botId] as PlayerGameState) };
+    if (cardId === "omen-candle") updatedBot.knowledge = Math.min(updatedBot.knowledge + 1, 8);
+    if (cardId === "omen-dog")    updatedBot.speed      = Math.min(updatedBot.speed     + 1, 8);
+    if (cardId === "omen-girl") {
+      updatedBot.sanity  = Math.max(updatedBot.sanity - 1, 0);
+      updatedBot.is_dead = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-mask") {
+      updatedBot.might     = Math.max(updatedBot.might - 1, 0);
+      updatedBot.knowledge = Math.min(updatedBot.knowledge + 2, 8);
+      updatedBot.is_dead   = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-skull") {
+      const allPS = { ...existingPS };
+      for (const pid of Object.keys(allPS)) {
+        const s = allPS[pid];
+        const newSanity = Math.max(s.sanity - 1, 0);
+        allPS[pid] = { ...s, sanity: newSanity, is_dead: isDead(s.might, newSanity) };
+      }
+      patch.player_states = allPS;
+    } else {
+      patch.player_states = { ...existingPS, [botId]: updatedBot };
+    }
+
     if (gs.phase === "haunt") {
       // Haunt already running — don't re-trigger
       pushBotLog(`Omen drawn but haunt already started — skipping haunt roll`);
@@ -322,7 +361,7 @@ async function executeBotTurn(
   if (landedTileId) {
     const tileDef = getTile(landedTileId);
     const landedTileKey = `${movedBotState.floor},${movedBotState.x},${movedBotState.y}`;
-    const alreadyDrawn = (cur.turn_drawn_tiles ?? []).includes(landedTileKey);
+    const alreadyDrawn = (movedBotState.drawn_tiles ?? []).includes(landedTileKey);
     if (!alreadyDrawn && tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell") {
       let cardId: string | null = null;
       if (tileDef.type === "item"  && cur.item_deck.length  > 0) cardId = cur.item_deck[0];
@@ -331,10 +370,15 @@ async function executeBotTurn(
 
       if (cardId) {
         cur = resolveCardForBot(cur, cardId, botId, movedBotState, pushBotLog);
+        // Permanently mark drawn in player state
+        const freshBot = cur.player_states[botId] as PlayerGameState;
         cur = {
           ...cur,
           turn_phase: "action",
-          turn_drawn_tiles: [...(cur.turn_drawn_tiles ?? []), landedTileKey],
+          player_states: {
+            ...cur.player_states,
+            [botId]: { ...freshBot, drawn_tiles: [...new Set([...(freshBot.drawn_tiles ?? []), landedTileKey])] },
+          },
         };
       }
     }
@@ -361,7 +405,7 @@ async function executeBotTurn(
       const target      = enemies[Math.floor(Math.random() * enemies.length)];
       const targetState = cur.player_states[target.id] as PlayerGameState;
 
-      const atkRolls    = rollDice(Math.max(1, freshBotState.might));
+      const atkRolls    = rollDice(getAttackMight(freshBotState));
       const defRolls    = rollDice(Math.max(1, targetState.might));
       const atkTotal    = atkRolls.reduce((a, b) => a + b, 0);
       const defTotal    = defRolls.reduce((a, b) => a + b, 0);
@@ -370,15 +414,20 @@ async function executeBotTurn(
       let combatMsg = "";
 
       if (atkTotal > defTotal) {
-        const dmg     = atkTotal - defTotal;
+        const dmg      = atkTotal - defTotal;
         const newMight = Math.max(0, targetState.might - dmg);
-        newPlayerStates[target.id] = { ...targetState, might: newMight, is_dead: newMight <= 0 };
-        combatMsg = `🤖 ${botName} hit ${target.name} for ${dmg} Might${newMight <= 0 ? " — eliminated!" : ""}`;
+        newPlayerStates[target.id] = { ...targetState, might: newMight, is_dead: isDead(newMight, targetState.sanity) };
+        // Sacrificial Dagger costs 1 Sanity per use
+        if (freshBotState.items?.includes("sacrificial-dagger")) {
+          const newSanity = Math.max(0, freshBotState.sanity - 1);
+          newPlayerStates[botId] = { ...freshBotState, sanity: newSanity, is_dead: isDead(freshBotState.might, newSanity) };
+        }
+        combatMsg = `🤖 ${botName} hit ${target.name} for ${dmg} Might${isDead(newMight, targetState.sanity) ? " — eliminated!" : ""}`;
         pushBotLog(`Attack vs ${target.name}: ${atkTotal} vs ${defTotal} → hit for ${dmg}`);
       } else if (defTotal > atkTotal) {
-        const dmg     = defTotal - atkTotal;
+        const dmg      = defTotal - atkTotal;
         const newMight = Math.max(0, freshBotState.might - dmg);
-        newPlayerStates[botId] = { ...freshBotState, might: newMight, is_dead: newMight <= 0 };
+        newPlayerStates[botId] = { ...freshBotState, might: newMight, is_dead: isDead(newMight, freshBotState.sanity) };
         combatMsg = `🤖 ${botName} was countered by ${target.name} for ${dmg} Might`;
         pushBotLog(`Attack vs ${target.name}: ${atkTotal} vs ${defTotal} → countered for ${dmg}`);
       } else {

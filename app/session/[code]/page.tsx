@@ -704,6 +704,7 @@ function SessionRoom() {
         items: [],
         is_dead: false,
         is_traitor: false,
+        drawn_tiles: [],
       };
     });
 

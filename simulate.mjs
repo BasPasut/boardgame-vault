@@ -137,6 +137,16 @@ function buildStartingTiles() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+const isDead = (might, sanity) => might <= 0 || sanity <= 0;
+function getAttackMight(state) {
+  let bonus = 0;
+  const items = state.items ?? [];
+  if (items.includes("axe"))                bonus += 2;
+  if (items.includes("knife"))              bonus += 1;
+  if (items.includes("sacrificial-dagger")) bonus += 3;
+  return Math.max(1, state.might + bonus);
+}
+
 function rollDie() {
   const r = Math.random();
   if (r < 2/8) return 0;
@@ -176,7 +186,7 @@ function initGame(numPlayers) {
     playerStates[p.id] = {
       character_id: "char-generic", floor:1, x:0, y:0,
       ...charStats,
-      items:[], is_dead:false, is_traitor:false,
+      items:[], is_dead:false, is_traitor:false, drawn_tiles:[],
     };
   }
 
@@ -221,46 +231,76 @@ function resolveCard(gs, cardId, botId, botState) {
   };
 
   if (type === "item") {
-    patch.player_states = {
-      ...gs.player_states,
-      [botId]: { ...botState, items: [...(botState.items??[]), cardId] },
-    };
+    let updatedBot = { ...botState, items: [...(botState.items??[]), cardId] };
+    if (cardId === "holy-symbol")   updatedBot.sanity    = Math.min(updatedBot.sanity    + 2, 8);
+    if (cardId === "ancient-book")  updatedBot.knowledge  = Math.min(updatedBot.knowledge + 2, 8);
+    if (cardId === "healing-salve") updatedBot.might      = Math.min(updatedBot.might     + 2, 8);
+    patch.player_states = { ...gs.player_states, [botId]: updatedBot };
   }
 
-  if (type === "omen" && gs.phase !== "haunt") {
-    const newOmenCount = gs.omen_count + 1;
-    patch.omen_count = newOmenCount;
-    const roll = rollSum(2);
-    if (roll < newOmenCount) {
-      // Haunt begins — pick traitor (human first, exclude already-traitors)
-      const eligible = gs.turn_order.filter(
-        id => id !== botId && !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor
-      );
-      const fallback = gs.turn_order.filter(id => !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor);
-      const traitorId = eligible.length > 0
-        ? eligible[Math.floor(Math.random()*eligible.length)]
-        : fallback.length > 0
-        ? fallback[Math.floor(Math.random()*fallback.length)]
-        : botId;
+  if (type === "omen") {
+    // Omen stat effects (always apply)
+    const existingPS = patch.player_states ?? gs.player_states;
+    let updatedBot = { ...existingPS[botId] };
+    if (cardId === "omen-candle") updatedBot.knowledge = Math.min(updatedBot.knowledge + 1, 8);
+    if (cardId === "omen-dog")    updatedBot.speed      = Math.min(updatedBot.speed     + 1, 8);
+    if (cardId === "omen-girl") {
+      updatedBot.sanity  = Math.max(updatedBot.sanity - 1, 0);
+      updatedBot.is_dead = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-mask") {
+      updatedBot.might     = Math.max(updatedBot.might - 1, 0);
+      updatedBot.knowledge = Math.min(updatedBot.knowledge + 2, 8);
+      updatedBot.is_dead   = isDead(updatedBot.might, updatedBot.sanity);
+    }
+    if (cardId === "omen-skull") {
+      const allPS = { ...existingPS };
+      for (const pid of Object.keys(allPS)) {
+        const s = allPS[pid]; const ns = Math.max(s.sanity-1,0);
+        allPS[pid] = { ...s, sanity:ns, is_dead:isDead(s.might,ns) };
+      }
+      patch.player_states = allPS;
+    } else {
+      patch.player_states = { ...existingPS, [botId]: updatedBot };
+    }
 
-      const newPS = { ...(patch.player_states ?? gs.player_states) };
-      newPS[traitorId] = { ...newPS[traitorId], is_traitor: true };
-      patch = { ...patch, phase:"haunt", haunt_number:newOmenCount, traitor_id:traitorId,
-                player_states:newPS, haunt_objectives:{traitor:"Win",heroes:"Survive"} };
+    if (gs.phase !== "haunt") {
+      const newOmenCount = gs.omen_count + 1;
+      patch.omen_count = newOmenCount;
+      const roll = rollSum(2);
+      if (roll < newOmenCount) {
+        const eligible = gs.turn_order.filter(
+          id => id !== botId && !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor
+        );
+        const fallback = gs.turn_order.filter(id => !gs.player_states[id]?.is_dead && !gs.player_states[id]?.is_traitor);
+        const traitorId = eligible.length > 0
+          ? eligible[Math.floor(Math.random()*eligible.length)]
+          : fallback.length > 0
+          ? fallback[Math.floor(Math.random()*fallback.length)]
+          : botId;
+
+        const newPS = { ...(patch.player_states ?? gs.player_states) };
+        newPS[traitorId] = { ...newPS[traitorId], is_traitor: true };
+        patch = { ...patch, phase:"haunt", haunt_number:newOmenCount, traitor_id:traitorId,
+                  player_states:newPS, haunt_objectives:{traitor:"Win",heroes:"Survive"} };
+      }
     }
   }
 
-  // Simple event effects
+  // Event effects
   if (type === "event") {
     const ps = { ...(gs.player_states) };
     const me = { ...botState };
-    if (cardId === "ev-cold-spot")   me.speed   = Math.max(me.speed   - 1, 0);
-    if (cardId === "ev-falling")     me.might   = Math.max(me.might   - rollSum(2), 0);
-    if (cardId === "ev-dark-vision") { if (rollSum(2)<4) me.sanity=Math.max(me.sanity-1,0); else me.knowledge=Math.min(me.knowledge+1,6); }
+    if (cardId === "ev-cold-spot")   me.speed = Math.max(me.speed - 1, 0);
+    if (cardId === "ev-falling")     me.might = Math.max(me.might - rollSum(2), 0);
+    if (cardId === "ev-dark-vision") { if (rollSum(2)<4) me.sanity=Math.max(me.sanity-1,0); else me.knowledge=Math.min(me.knowledge+1,8); }
     if (cardId === "ev-the-smell")   { if (rollSum(2)<=4) me.might=Math.max(me.might-2,0); }
     if (cardId === "ev-portrait") {
       for (const pid of Object.keys(ps)) {
-        if (ps[pid].floor===botState.floor) ps[pid]={...ps[pid],sanity:Math.max(ps[pid].sanity-1,0)};
+        if (ps[pid].floor===botState.floor) {
+          const ns=Math.max(ps[pid].sanity-1,0);
+          ps[pid]={...ps[pid],sanity:ns,is_dead:isDead(ps[pid].might,ns)};
+        }
       }
     }
     if (cardId === "ev-writing") {
@@ -272,7 +312,7 @@ function resolveCard(gs, cardId, botId, botState) {
         me.sanity = Math.max(me.sanity-1,0);
       }
     }
-    me.is_dead = me.might <= 0 || me.sanity <= 0;
+    me.is_dead = isDead(me.might, me.sanity);
     ps[botId] = me;
     patch.player_states = ps;
   }
@@ -443,7 +483,7 @@ function executeBotTurn(gs, players, botId) {
   if (landedTileId) {
     const tileDef = getTile(landedTileId);
     const landedKey = `${movedBotState.floor},${movedBotState.x},${movedBotState.y}`;
-    const alreadyDrawn = (cur.turn_drawn_tiles??[]).includes(landedKey);
+    const alreadyDrawn = (movedBotState.drawn_tiles??[]).includes(landedKey);
     if (!alreadyDrawn && tileDef?.type && tileDef.type!=="normal" && tileDef.type!=="stairwell") {
       let cardId=null;
       if (tileDef.type==="item"  && cur.item_deck.length >0) cardId=cur.item_deck[0];
@@ -451,7 +491,11 @@ function executeBotTurn(gs, players, botId) {
       if (tileDef.type==="event" && cur.event_deck.length>0) cardId=cur.event_deck[0];
       if (cardId) {
         cur = resolveCard(cur, cardId, botId, cur.player_states[botId]);
-        cur = {...cur, turn_drawn_tiles:[...(cur.turn_drawn_tiles??[]),landedKey]};
+        // Permanently record drawn tile in player state
+        const freshBot = cur.player_states[botId];
+        cur = { ...cur, player_states: { ...cur.player_states, [botId]: {
+          ...freshBot, drawn_tiles: [...new Set([...(freshBot.drawn_tiles??[]), landedKey])],
+        }}};
       }
     }
   }
@@ -469,17 +513,19 @@ function executeBotTurn(gs, players, botId) {
     if (enemies.length>0) {
       const target = enemies[Math.floor(Math.random()*enemies.length)];
       const ts = cur.player_states[target.id];
-      const atkTotal = rollSum(Math.max(1,freshBot.might));
+      const atkTotal = rollSum(getAttackMight(freshBot));
       const defTotal = rollSum(Math.max(1,ts.might));
       const newPS = {...cur.player_states};
       if (atkTotal>defTotal) {
-        const dmg=atkTotal-defTotal;
-        const nm=Math.max(0,ts.might-dmg);
-        newPS[target.id]={...ts,might:nm,is_dead:nm<=0};
+        const dmg=atkTotal-defTotal; const nm=Math.max(0,ts.might-dmg);
+        newPS[target.id]={...ts,might:nm,is_dead:isDead(nm,ts.sanity)};
+        if (freshBot.items?.includes("sacrificial-dagger")) {
+          const ns=Math.max(0,freshBot.sanity-1);
+          newPS[botId]={...freshBot,sanity:ns,is_dead:isDead(freshBot.might,ns)};
+        }
       } else if (defTotal>atkTotal) {
-        const dmg=defTotal-atkTotal;
-        const nm=Math.max(0,freshBot.might-dmg);
-        newPS[botId]={...freshBot,might:nm,is_dead:nm<=0};
+        const dmg=defTotal-atkTotal; const nm=Math.max(0,freshBot.might-dmg);
+        newPS[botId]={...freshBot,might:nm,is_dead:isDead(nm,freshBot.sanity)};
       }
       cur={...cur,player_states:newPS};
     }
@@ -655,20 +701,20 @@ function runSimulation(numGames=200, playersPerGame=4) {
     }
   }
 
-  // Test 2: turn_drawn_tiles prevents re-draw
+  // Test 2: drawn_tiles (permanent per-player) prevents re-draw
   {
     const gs = initGame(2);
-    // Manually add kitchen tile (item type) next to entrance hall
     const kitchenPlaced = buildPlacedTile("kitchen", 1, 1, 0, "west", "test");
     if (kitchenPlaced) {
       gs.placed_tiles.push(kitchenPlaced);
-      gs.turn_drawn_tiles = ["1,1,0"]; // already drawn from kitchen this turn
-      // Simulate move to kitchen
+      const botId = gs.turn_order[0];
+      // Simulate having already drawn from kitchen on a previous turn
+      gs.player_states[botId] = { ...gs.player_states[botId], drawn_tiles: ["1,1,0"] };
       const tileDef = getTile("kitchen");
       const tileKey = "1,1,0";
-      const alreadyDrawn = gs.turn_drawn_tiles.includes(tileKey);
+      const alreadyDrawn = (gs.player_states[botId].drawn_tiles??[]).includes(tileKey);
       const wouldDraw = !alreadyDrawn && tileDef?.type === "item" && gs.item_deck.length > 0;
-      console.log(`  turn_drawn_tiles prevents re-draw:       ${!wouldDraw ? "✅ PASS" : "❌ FAIL (would draw again)"}`);
+      console.log(`  drawn_tiles prevents re-draw across turns: ${!wouldDraw ? "✅ PASS" : "❌ FAIL (would draw again)"}`);
     }
   }
 
