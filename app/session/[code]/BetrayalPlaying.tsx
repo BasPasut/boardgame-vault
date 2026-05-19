@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import NextImage from "next/image";
 import { supabase } from "@/lib/supabase";
-import { getLang } from "@/lib/utils/lang";
+import { getLang, saveLang } from "@/lib/utils/lang";
 import { useAmbientAudio, useSfx } from "@/lib/hooks/useAmbientAudio";
 import type { BetrayalGameState, PlacedTile, Floor, PlayerGameState } from "@/lib/games/betrayal/types";
 import { TILE_DEFINITIONS, getTile, buildTilePools } from "@/lib/games/betrayal/data/tiles";
@@ -1048,7 +1048,8 @@ function VictoryScreen({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, isHost }: Props) {
-  const lang = getLang();
+  const [lang, setLangState] = useState<"en" | "th">(() => getLang());
+  const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const gs = dbSession.game_state;
 
   const { muted, toggleMute } = useAmbientAudio(
@@ -1436,6 +1437,16 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
               title={muted ? "Unmute" : "Mute"}
             >
               {muted ? "🔇" : "🔊"}
+            </button>
+            {/* Language toggle */}
+            <button
+              onClick={() => setLang(lang === "en" ? "th" : "en")}
+              className="px-2 py-1 rounded-lg text-xs"
+              style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.15)" }}
+            >
+              <span style={{ color: lang === "en" ? "#d4af37" : "#5a4a3a" }}>EN</span>
+              <span style={{ color: "#3a2a1a" }}> / </span>
+              <span style={{ color: lang === "th" ? "#d4af37" : "#5a4a3a" }}>TH</span>
             </button>
           </div>
         </div>
