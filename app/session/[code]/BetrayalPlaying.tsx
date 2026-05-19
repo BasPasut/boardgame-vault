@@ -1394,6 +1394,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         if (updatedState.is_dead) playSfx("/audio/betrayal/sfx/scream.mp3");
       } else if (cardId === "omen-dog") {
         updatedState.speed = Math.min(myState.speed + 1, char?.speedMax ?? 8);
+      } else if (cardId === "omen-book" && gs.item_deck.length > 0) {
+        // Draw 1 item card immediately
+        const itemId = gs.item_deck[0];
+        updatedState.items = [...(myState.items ?? []), itemId];
+        patch.item_deck = gs.item_deck.slice(1);
+        patch.item_discard = [itemId, ...gs.item_discard];
+        newLog.push(addLog("stat", `${playerName} found an item from The Book: ${itemId}`));
       }
 
       // omen-skull: all players lose 1 sanity
@@ -1407,9 +1414,24 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             is_dead: isDead(allStates[pid].might, newSanity),
           };
         }
-        // Also record drawn_tiles for current player
         allStates[myPlayerId!] = { ...allStates[myPlayerId!], drawn_tiles: newDrawnTiles };
         patch.player_states = allStates;
+      } else if (cardId === "omen-holy-symbol") {
+        // All players in the SAME ROOM make a Sanity roll (3+) or lose 1 Sanity
+        const roomStates = { ...gs.player_states };
+        for (const pid of Object.keys(roomStates)) {
+          const ps = roomStates[pid];
+          if (ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y) {
+            const roll = rollDice(2).reduce((a, b) => a + b, 0);
+            if (roll < 3) {
+              const newSanity = Math.max(ps.sanity - 1, 0);
+              roomStates[pid] = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+              newLog.push(addLog("stat", `${pid === myPlayerId ? playerName : pid} failed Sanity roll (${roll}) — lost 1 Sanity`));
+            }
+          }
+        }
+        roomStates[myPlayerId!] = { ...roomStates[myPlayerId!], drawn_tiles: newDrawnTiles };
+        patch.player_states = roomStates;
       } else {
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       }

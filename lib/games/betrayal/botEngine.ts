@@ -151,12 +151,32 @@ function resolveCardForBot(
       updatedBot.knowledge = Math.min(updatedBot.knowledge + 2, 8);
       updatedBot.is_dead   = isDead(updatedBot.might, updatedBot.sanity);
     }
+    if (cardId === "omen-book" && gs.item_deck.length > 0) {
+      const itemId = gs.item_deck[0];
+      updatedBot.items = [...(updatedBot.items ?? []), itemId];
+      patch.item_deck    = gs.item_deck.slice(1);
+      patch.item_discard = [itemId, ...(gs.item_discard ?? [])];
+    }
     if (cardId === "omen-skull") {
       const allPS = { ...existingPS };
       for (const pid of Object.keys(allPS)) {
         const s = allPS[pid];
         const newSanity = Math.max(s.sanity - 1, 0);
         allPS[pid] = { ...s, sanity: newSanity, is_dead: isDead(s.might, newSanity) };
+      }
+      patch.player_states = allPS;
+    } else if (cardId === "omen-holy-symbol") {
+      // All players in same room roll Sanity (3+) or lose 1
+      const allPS = { ...existingPS };
+      for (const pid of Object.keys(allPS)) {
+        const ps = allPS[pid];
+        if (ps.floor === botState.floor && ps.x === botState.x && ps.y === botState.y) {
+          const roll = rollDice(2).reduce((a, b) => a + b, 0);
+          if (roll < 3) {
+            const newSanity = Math.max(ps.sanity - 1, 0);
+            allPS[pid] = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+          }
+        }
       }
       patch.player_states = allPS;
     } else {
