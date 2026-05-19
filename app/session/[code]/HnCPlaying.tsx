@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getLang, saveLang } from "@/lib/utils/lang";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
@@ -40,6 +40,47 @@ interface Props {
   dbSession: HnCDbSession;
   players: Player[];
   myPlayerId: string | null;
+}
+
+// ---------- Browser warning ----------
+function ChromeWarning({ lang }: { lang: "en" | "th" }) {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    // Detect non-Chrome: Chrome has "Chrome/" but not "Edg/" or "OPR/"
+    const ua = navigator.userAgent;
+    const isChrome = /Chrome\//.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua);
+    if (!isChrome) setShow(true);
+  }, []);
+
+  if (!show) return null;
+
+  const msg =
+    lang === "th"
+      ? "สีบนกระดานอาจแสดงผลไม่ตรงกันบน browser นี้ — แนะนำให้เล่นบน Google Chrome เพื่อสีที่แม่นยำที่สุด"
+      : "Colors may render differently on this browser. For the most accurate color matching, play on Google Chrome.";
+
+  return (
+    <div
+      className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+      style={{
+        background: "rgba(212,175,55,0.08)",
+        border: "1px solid rgba(212,175,55,0.35)",
+        color: "#c8a84a",
+      }}
+    >
+      <span className="text-base leading-none mt-0.5 flex-shrink-0">⚠️</span>
+      <span className="flex-1">{msg}</span>
+      <button
+        onClick={() => setShow(false)}
+        className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity leading-none"
+        style={{ color: "#c8a84a" }}
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 // ---------- Color Grid (30×16) ----------
@@ -515,6 +556,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             ))}
           </div>
         )}
+
+        {/* Browser warning — shown on non-Chrome browsers */}
+        <ChromeWarning lang={lang} />
 
         {/* Color Grid */}
         <ColorGrid
