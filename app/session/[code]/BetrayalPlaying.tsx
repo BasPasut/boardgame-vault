@@ -575,11 +575,11 @@ const CARD_BACK: Record<string, string> = {
   event: "/images/games/betrayal/cards/card-back-event.png",
 };
 
-function CardOverlay({ cardId, onDismiss, lang = "en" }: { cardId: string; onDismiss: () => void; lang?: "en" | "th" }) {
+function CardOverlay({ cardId, onDismiss, lang = "en", startRevealed = false }: { cardId: string; onDismiss: () => void; lang?: "en" | "th"; startRevealed?: boolean }) {
   const card = getCard(cardId);
   const [imgErr, setImgErr]       = useState(false);
   const [backErr, setBackErr]     = useState(false);
-  const [revealed, setRevealed]   = useState(false);
+  const [revealed, setRevealed]   = useState(startRevealed);
 
   if (!card) return null;
   const typeColor = { item: "#f59e0b", omen: "#ef4444", event: "#6366f1" }[card.type] ?? "#d4af37";
