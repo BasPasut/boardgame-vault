@@ -148,12 +148,19 @@ const STAT_FLASH_STYLE = `
 /* Floor button hover */
 .floor-btn:hover { filter: brightness(1.2); }
 .floor-btn { transition: filter 0.12s, background 0.12s; }
+/* Player pin hop — plays once each time the pin lands on a new tile */
+@keyframes pinHop {
+  0%   { transform: scale(0.5);  opacity: 0.4; }
+  55%  { transform: scale(1.35); opacity: 1;   }
+  100% { transform: scale(1);    opacity: 1;   }
+}
+.pin-hop { animation: pinHop 0.28s ease-out forwards; }
 `;
 
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
 function MapTile({
   tile, playersHere, isReachable, isMyPosition, onClick, isNew,
-  myPlayerId, currentPlayerId, deckCount, monstersHere,
+  myPlayerId, currentPlayerId, deckCount, monstersHere, pathStep,
 }: {
   tile: PlacedTile;
   playersHere: { player: Player; index: number; isDead?: boolean }[];
@@ -165,6 +172,7 @@ function MapTile({
   currentPlayerId: string | null;
   deckCount?: number;
   monstersHere?: MonsterState[];
+  pathStep?: number | null;
 }) {
   const def = getTile(tile.tile_id);
   const typeColor = {
@@ -233,6 +241,16 @@ function MapTile({
       {tile.doors.east  && <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-l" style={{ background: "rgba(212,175,55,0.6)" }} />}
       {tile.doors.west  && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-r" style={{ background: "rgba(212,175,55,0.6)" }} />}
 
+      {/* Path step number — shown on hover when this tile is in the planned path */}
+      {pathStep != null && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center font-black text-xs"
+            style={{ background: "rgba(212,175,55,0.92)", color: "#0d0a1a", boxShadow: "0 0 10px rgba(212,175,55,0.7)", fontFamily: "var(--font-gothic)" }}>
+            {pathStep}
+          </div>
+        </div>
+      )}
+
       {/* Top-left badges: monster skull + dead player ghosts */}
       {(hasMonster || playersHere.some(p => p.isDead)) && (
         <div className="absolute top-1 left-1 flex gap-0.5" style={{ zIndex: 12 }}>
@@ -254,12 +272,9 @@ function MapTile({
       )}
 
       {/* Monster token — image in bottom-right corner */}
-      {hasMonster && monstersHere && monstersHere[0]?.image && (
-        <div className="absolute bottom-4 right-1 z-10" style={{ width: 22, height: 22 }}>
-          <div className="relative w-full h-full rounded-full overflow-hidden"
-            style={{ border: "1.5px solid #ef4444", boxShadow: "0 0 8px rgba(239,68,68,0.8)" }}>
-            <NextImage src={monstersHere[0].image} alt={monstersHere[0].name} fill sizes="22px" className="object-cover" />
-          </div>
+      {hasMonster && monstersHere && monstersHere[0] && (
+        <div className="absolute bottom-4 right-1 z-10">
+          <MonsterAvatar image={monstersHere[0].image} name={monstersHere[0].name} size={22} />
         </div>
       )}
 
@@ -328,9 +343,28 @@ function UnexploredDoor({ onClick, canExplore }: { onClick: () => void; canExplo
   );
 }
 
+// ─── Monster Avatar (with image fallback) ─────────────────────────────────────
+function MonsterAvatar({ image, name, size = 28 }: { image: string; name: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  if (!err && image) {
+    return (
+      <div className="relative rounded-full overflow-hidden flex-shrink-0"
+        style={{ width: size, height: size, border: "1.5px solid #ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)" }}>
+        <NextImage src={image} alt={name} fill sizes={`${size * 2}px`} className="object-cover" onError={() => setErr(true)} />
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-full flex items-center justify-center flex-shrink-0 font-bold"
+      style={{ width: size, height: size, background: "#7f1d1d", border: "1.5px solid #ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)", fontSize: size * 0.45, color: "#fca5a5" }}>
+      ☠
+    </div>
+  );
+}
+
 // ─── Mansion Map ──────────────────────────────────────────────────────────────
 function MansionMap({
-  gs, players, myPlayerId, myState, isMyTurn, onMove, onRevealTile, animPos,
+  gs, players, myPlayerId, myState, isMyTurn, onMove, onRevealTile, animPos, animStepKey,
 }: {
   gs: BetrayalGameState;
   players: Player[];
@@ -340,10 +374,12 @@ function MansionMap({
   onMove: (x: number, y: number, floor: Floor) => void;
   onRevealTile: (x: number, y: number, floor: Floor) => void;
   animPos?: { floor: Floor; x: number; y: number } | null;
+  animStepKey?: number;
 }) {
   const [viewFloor, setViewFloor] = useState<Floor>(myState?.floor ?? 1);
   const [newTileKey, setNewTileKey] = useState<string>("");
   const [zoom, setZoom] = useState(1.0);
+  const [hoverTile, setHoverTile] = useState<{ x: number; y: number } | null>(null);
 
   // Auto-follow player when they change floors (e.g. via stairwell)
   useEffect(() => {
@@ -409,6 +445,21 @@ function MansionMap({
       return isHere || reachable.has(key);
     });
   }, [unexplored, reachable, isMyTurn, myState, viewFloor, gs.turn_phase]);
+
+  // Hover path preview — shortest path from player to hovered tile, with step numbers
+  const hoverPathMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!hoverTile || !myState || gs.turn_phase !== "move" || !isMyTurn || animPos) return map;
+    const path = findPath(
+      gs.placed_tiles,
+      myState.floor, myState.x, myState.y,
+      viewFloor, hoverTile.x, hoverTile.y,
+      gs.locked_doors ?? [],
+    );
+    if (!path) return map;
+    path.forEach((step, i) => map.set(`${step.floor},${step.x},${step.y}`, i + 1));
+    return map;
+  }, [hoverTile, myState, gs.placed_tiles, gs.locked_doors, gs.turn_phase, isMyTurn, viewFloor, animPos]);
 
   const playersByTile = useMemo(() => {
     const map = new Map<string, { player: Player; index: number; isDead: boolean }[]>();
@@ -530,7 +581,12 @@ function MansionMap({
               ? deckCounts[tileDef.type]
               : undefined;
             return (
-              <div key={tile.tile_id} style={{ position: "absolute", left: px, top: py }}>
+              <div
+                key={tile.tile_id}
+                style={{ position: "absolute", left: px, top: py }}
+                onMouseEnter={() => { if (reachable.has(key)) setHoverTile({ x: tile.x, y: tile.y }); }}
+                onMouseLeave={() => setHoverTile(null)}
+              >
                 <MapTile
                   tile={tile}
                   playersHere={playersByTile.get(`${tile.x},${tile.y}`) ?? []}
@@ -541,8 +597,9 @@ function MansionMap({
                   currentPlayerId={currentPlayerId}
                   deckCount={dc}
                   monstersHere={monstersByTile.get(`${tile.x},${tile.y}`)}
+                  pathStep={hoverPathMap.get(key) ?? null}
                   onClick={() => {
-                    if (reachable.has(key)) onMove(tile.x, tile.y, viewFloor);
+                    if (reachable.has(key)) { setHoverTile(null); onMove(tile.x, tile.y, viewFloor); }
                   }}
                 />
               </div>
@@ -585,7 +642,7 @@ function MansionMap({
             );
           })}
 
-          {/* ── Floating player token — CSS transition handles smooth sliding ── */}
+          {/* ── Floating player token — hops to each tile in path (no CSS transition) ── */}
           {animPixelPos && myPlayerObj && (
             <div
               style={{
@@ -594,46 +651,47 @@ function MansionMap({
                 top: animPixelPos.top,
                 width: TILE_PX,
                 height: TILE_PX,
-                transition: "left 240ms ease-in-out, top 240ms ease-in-out",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
                 pointerEvents: "none",
                 zIndex: 30,
               }}
             >
-              {/* Pulse ring */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-9 h-9 rounded-full animate-ping"
-                  style={{ background: playerColor(myPlayerIdx), opacity: 0.35 }} />
-              </div>
-              {/* Token */}
-              <div className="relative w-8 h-8 rounded-full flex items-center justify-center font-black"
-                style={{
-                  background: playerColor(myPlayerIdx),
-                  fontSize: 13,
-                  color: "#fff",
-                  border: "2px solid #fbbf24",
-                  boxShadow: "0 0 12px rgba(251,191,36,0.9), 0 2px 8px rgba(0,0,0,0.9)",
-                  letterSpacing: 0,
-                }}>
-                {myPlayerObj.name[0].toUpperCase()}
+              {/* Inner wrapper keyed per step — restarts pinHop animation on each tile */}
+              <div key={animStepKey} className="pin-hop absolute inset-0 flex items-center justify-center">
+                {/* Pulse ring */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-full animate-ping"
+                    style={{ background: playerColor(myPlayerIdx), opacity: 0.35 }} />
+                </div>
+                {/* Token */}
+                <div className="relative w-8 h-8 rounded-full flex items-center justify-center font-black"
+                  style={{
+                    background: playerColor(myPlayerIdx),
+                    fontSize: 13,
+                    color: "#fff",
+                    border: "2px solid #fbbf24",
+                    boxShadow: "0 0 12px rgba(251,191,36,0.9), 0 2px 8px rgba(0,0,0,0.9)",
+                    letterSpacing: 0,
+                  }}>
+                  {myPlayerObj.name[0].toUpperCase()}
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs" style={{ color: "#5a4a3a" }}>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-1" />Item ({gs.item_deck.length})</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Omen ({gs.omen_deck.length})</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-indigo-500 mr-1" />Event ({gs.event_deck.length})</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Stairwell</span>
-        {(gs.remaining_tiles[viewFloor]?.length ?? 0) > 0
-          ? <span>🚪 {gs.remaining_tiles[viewFloor].length} room{gs.remaining_tiles[viewFloor].length !== 1 ? "s" : ""} left to explore</span>
-          : <span style={{ color: "#7a6a5a" }}>🚫 No more rooms for this floor</span>
-        }
+      {/* Legend — compact single row, no overflow on mobile */}
+      <div className="flex items-center gap-2 text-xs overflow-x-auto flex-nowrap pb-0.5" style={{ color: "#5a4a3a", scrollbarWidth: "none" }}>
+        <span className="flex items-center gap-0.5 flex-shrink-0"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />I{gs.item_deck.length}</span>
+        <span className="flex items-center gap-0.5 flex-shrink-0"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />O{gs.omen_deck.length}</span>
+        <span className="flex items-center gap-0.5 flex-shrink-0"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />E{gs.event_deck.length}</span>
+        <span className="flex items-center gap-0.5 flex-shrink-0"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />St</span>
+        <span className="flex-shrink-0 ml-auto">
+          {(gs.remaining_tiles[viewFloor]?.length ?? 0) > 0
+            ? `🚪 ${gs.remaining_tiles[viewFloor].length}r`
+            : <span style={{ color: "#5a4a3a" }}>🚫</span>
+          }
+        </span>
       </div>
     </div>
   );
@@ -1400,6 +1458,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
   const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
   const [animPos, setAnimPos] = useState<{ floor: Floor; x: number; y: number } | null>(null);
+  const [animStepKey, setAnimStepKey] = useState(0);
   const isAnimatingRef = useRef(false);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string; diceCount?: number } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
@@ -1546,17 +1605,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
     if (path && path.length > 0) {
       isAnimatingRef.current = true;
-      // Pin floating token at origin so browser knows where to transition FROM
+      // Snap floating pin to current tile (removes player from tile grid)
       setAnimPos({ floor: myState.floor, x: myState.x, y: myState.y });
-      // Two rAFs guarantee the browser painted the token at origin before we move it
-      await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
-      // Walk every step of the path (CSS slides each leg in 240 ms)
+      setAnimStepKey(k => k + 1);
+      await new Promise<void>(res => setTimeout(res, 30)); // let React paint initial position
+      // Step through each tile in the shortest path — hop animation plays at each stop
       for (const step of path) {
         setAnimPos(step);
+        setAnimStepKey(k => k + 1); // restart pinHop keyframe
         playSfx("/audio/betrayal/sfx/footstep.mp3");
-        await new Promise<void>(res => setTimeout(res, 250)); // 10 ms buffer after 240 ms transition
+        await new Promise<void>(res => setTimeout(res, 380)); // dwell so player can count steps
       }
-      // animPos stays at destination; useEffect clears it once myState catches up
+      // animPos stays at destination; useEffect clears it once DB confirms new position
     }
 
     // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
@@ -1631,8 +1691,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       const adj = tileAt(gs.placed_tiles, floor, x + dx, y + dy);
       if (adj && adj.doors[OPP[dir]]) requiredDoors.push(dir);
     }
-    // If no adjacent tile has a door toward (x,y) the position is stale — abort.
-    if (requiredDoors.length === 0) return;
+    // If somehow no adjacent placed tile has a door toward (x,y), still attempt placement
+    // (can happen with stale unexplored-door positions after map state diverges)
+    if (requiredDoors.length === 0) {
+      // Force at least a north door requirement so Phase 2 can find any tile
+      requiredDoors.push("north");
+    }
 
     const startIdx = Math.floor(Math.random() * pool.length);
     let placed = null;
@@ -1671,7 +1735,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       }
     }
 
-    if (!placed) return; // pool exhausted
+    // Phase 3: absolute last resort — place first tile in pool at rotation 0 to unblock
+    if (!placed && pool.length > 0) {
+      const candidate = pool[startIdx % pool.length];
+      const tileDef = TILE_DEFINITIONS.find(t => t.id === candidate);
+      if (tileDef) {
+        placed = buildPlacedTile(candidate, floor, x, y, 0);
+        tileId = candidate;
+        newPool = pool.filter((_, i) => i !== (startIdx % pool.length));
+      }
+    }
+
+    if (!placed) return; // pool truly exhausted
 
     const newTiles = [...gs.placed_tiles, placed];
     const newRemaining = { ...gs.remaining_tiles, [floor]: newPool };
@@ -2785,24 +2860,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         {/* ── Map column ─────────────────────────────────────────────────── */}
         <div className="flex-1 min-h-0 flex flex-col gap-2 p-3 overflow-hidden">
 
-          {/* Objective banner (haunt phase) */}
-          {gs.phase === "haunt" && myObjective && hauntDismissed && (
-            <div className="flex-shrink-0 px-3 py-2 rounded-lg text-xs" style={{
-              background: myState?.is_traitor ? "rgba(239,68,68,0.08)" : "rgba(212,175,55,0.06)",
-              border: `1px solid ${myState?.is_traitor ? "rgba(239,68,68,0.2)" : "rgba(212,175,55,0.15)"}`,
-              color: myState?.is_traitor ? "#ef4444" : "#c8a84a",
-            }}>
-              <span className="font-bold">{myState?.is_traitor ? "⚔ Your Objective: " : "🕯 Heroes' Objective: "}</span>
-              {myObjective}
-            </div>
-          )}
-
           {/* Map — fills remaining column height on desktop */}
           <MansionMap
             gs={gs} players={players} myPlayerId={myPlayerId}
             myState={myState} isMyTurn={isMyTurn}
             onMove={handleMove} onRevealTile={handleRevealTile}
             animPos={animPos}
+            animStepKey={animStepKey}
           />
         </div>
 
@@ -2864,11 +2928,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
             const placedTileIds = new Set(gs.placed_tiles.map(t => t.tile_id));
 
+            const isTh = lang === "th";
             const getRoomStatus = (tileId: string, floor: 0|1|2) => {
-              if (placedTileIds.has(tileId)) return { icon: "✅", text: "on map", color: "#22c55e" };
+              if (placedTileIds.has(tileId)) return { icon: "✅", text: isTh ? "อยู่บนแผนที่" : "on map", color: "#22c55e" };
               const inPool = (gs.remaining_tiles[floor] ?? []).includes(tileId);
-              if (inPool) return { icon: "🗺", text: "not yet explored", color: "#f59e0b" };
-              return { icon: "❌", text: "not available", color: "#ef4444" };
+              if (inPool) return { icon: "🗺", text: isTh ? "ยังไม่ได้สำรวจ" : "not yet explored", color: "#f59e0b" };
+              return { icon: "❌", text: isTh ? "ไม่มีในเกม" : "not available", color: "#ef4444" };
             };
 
             const getItemStatus = (itemId: string) => {
@@ -2876,9 +2941,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
               if (itemId.startsWith("omen-")) {
                 const inDeck = gs.omen_deck.includes(itemId);
                 const inDiscard = gs.omen_discard.includes(itemId);
-                if (inDeck) return { icon: "🃏", text: "in omen deck", color: "#f59e0b" };
-                if (inDiscard) return { icon: "✅", text: "already drawn", color: "#22c55e" };
-                return { icon: "❓", text: "unknown", color: "#7a6a5a" };
+                if (inDeck) return { icon: "🃏", text: isTh ? "อยู่ในสำรับ" : "in omen deck", color: "#f59e0b" };
+                if (inDiscard) return { icon: "✅", text: isTh ? "จั่วไปแล้ว" : "already drawn", color: "#22c55e" };
+                return { icon: "❓", text: isTh ? "ไม่ทราบ" : "unknown", color: "#7a6a5a" };
               }
               // Regular item
               const inDeck = gs.item_deck.includes(itemId);
@@ -2889,9 +2954,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   holders.push(ps.is_traitor ? `${pName}(⚔)` : pName);
                 }
               }
-              if (holders.length > 0) return { icon: "🎒", text: `held by ${holders.join(", ")}`, color: holders.some(h => h.includes("⚔")) ? "#ef4444" : "#22c55e" };
-              if (inDeck) return { icon: "🃏", text: "in item deck", color: "#f59e0b" };
-              return { icon: "❌", text: "not available", color: "#ef4444" };
+              if (holders.length > 0) return { icon: "🎒", text: isTh ? `ถือโดย ${holders.join(", ")}` : `held by ${holders.join(", ")}`, color: holders.some(h => h.includes("⚔")) ? "#ef4444" : "#22c55e" };
+              if (inDeck) return { icon: "🃏", text: isTh ? "อยู่ในสำรับ" : "in item deck", color: "#f59e0b" };
+              return { icon: "❌", text: isTh ? "ไม่มีในเกม" : "not available", color: "#ef4444" };
             };
 
             const hasStatusItems = mentionedRooms.length > 0 || mentionedItems.length > 0;
@@ -2912,28 +2977,39 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 {/* Show MY objective prominently */}
                 <div className="rounded-lg p-2" style={{ background: `${accent}12`, border: `1px solid ${accent}30` }}>
                   <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: accent, fontSize: 9 }}>
-                    {isTraitor ? "⚔ Your Goal (Traitor)" : "🕯 Your Goal (Heroes)"}
+                    {isTraitor
+                      ? (lang === "th" ? "⚔ เป้าหมายของคุณ (ผู้ทรยศ)" : "⚔ Your Goal (Traitor)")
+                      : (lang === "th" ? "🕯 เป้าหมายของคุณ (ฮีโร่)" : "🕯 Your Goal (Heroes)")}
                   </p>
                   <p style={{ color: "#c8b89a" }}>{objective}</p>
                 </div>
                 {/* Show OTHER side's objective so everyone understands the game */}
                 <div className="rounded-lg p-2" style={{ background: "rgba(90,74,58,0.12)", border: "1px solid rgba(90,74,58,0.2)" }}>
                   <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "#7a6a5a", fontSize: 9 }}>
-                    {isTraitor ? "🕯 Heroes' Goal" : "⚔ Traitor's Goal"}
+                    {isTraitor
+                      ? (lang === "th" ? "🕯 เป้าหมายฮีโร่" : "🕯 Heroes' Goal")
+                      : (lang === "th" ? "⚔ เป้าหมายผู้ทรยศ" : "⚔ Traitor's Goal")}
                   </p>
                   <p style={{ color: "#5a4a3a" }}>{isTraitor ? scenario.heroObjective : scenario.traitorObjective}</p>
                 </div>
                 {powers && powers.length > 0 && (
-                  <ul className="space-y-1 pl-2">
-                    {powers.map((p, i) => (
-                      <li key={i} style={{ color: "#7a6a5a" }}>• {p}</li>
-                    ))}
-                  </ul>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "#5a4a3a", fontSize: 9 }}>
+                      {lang === "th" ? "ความสามารถพิเศษ" : "Special Powers"}
+                    </p>
+                    <ul className="space-y-1 pl-2">
+                      {powers.map((p, i) => (
+                        <li key={i} style={{ color: "#7a6a5a" }}>• {p}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
                 {/* Live status check for required rooms and items */}
                 {hasStatusItems && (
                   <div className="mt-2 pt-2 space-y-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    <p className="font-bold uppercase tracking-widest" style={{ color: "#5a4a3a", fontSize: 9 }}>Scenario status</p>
+                    <p className="font-bold uppercase tracking-widest" style={{ color: "#5a4a3a", fontSize: 9 }}>
+                      {lang === "th" ? "สถานะสถานการณ์" : "Scenario status"}
+                    </p>
                     {mentionedRooms.map(r => {
                       const s = getRoomStatus(r.tileId, r.floor);
                       return (
@@ -2982,10 +3058,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   })();
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0"
-                        style={{ border: "1.5px solid #ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)" }}>
-                        <NextImage src={m.image} alt={m.name} fill sizes="28px" className="object-cover" />
-                      </div>
+                      <MonsterAvatar image={m.image} name={m.name} size={28} />
                       <div className="min-w-0">
                         <p className="text-xs font-bold leading-none" style={{ color: "#fca5a5" }}>{m.name}</p>
                         <p className="text-xs leading-snug" style={{ color: onMyFloor ? "#ef4444" : "#7a6a5a" }}>

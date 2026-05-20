@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { getLang, saveLang } from "@/lib/utils/lang";
 import { useAmbientAudio } from "@/lib/hooks/useAmbientAudio";
@@ -288,7 +288,30 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const setLang = (l: "en" | "th") => { setLangState(l); saveLang(l); };
   const [clueInput, setClueInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { muted, toggleMute } = useAmbientAudio("/audio/ambient-lobby.mp3");
+  const { muted, toggleMute } = useAmbientAudio("/audio/hues-and-cues/bg_music.mp3");
+
+  // Phase countdown — 60 s per phase, resets on sub_phase change
+  const PHASE_DURATION = 60;
+  const [phaseSecsLeft, setPhaseSecsLeft] = useState(PHASE_DURATION);
+  const phaseStartRef = useRef<number>(Date.now());
+  const prevSubPhase = useRef(gs.sub_phase);
+  useEffect(() => {
+    if (gs.sub_phase !== prevSubPhase.current) {
+      prevSubPhase.current = gs.sub_phase;
+      phaseStartRef.current = Date.now();
+      setPhaseSecsLeft(PHASE_DURATION);
+    }
+  }, [gs.sub_phase]);
+  useEffect(() => {
+    if (gs.sub_phase === "reveal") return;
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - phaseStartRef.current) / 1000);
+      setPhaseSecsLeft(Math.max(0, PHASE_DURATION - elapsed));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [gs.sub_phase, phaseStartRef]);
 
   const gs = dbSession.game_state;
   const phase = dbSession.phase;
@@ -567,7 +590,22 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               {cueGiver?.name} 🎨
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Phase countdown */}
+            {gs.sub_phase !== "reveal" && (
+              <div
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold tabular-nums"
+                style={{
+                  background: phaseSecsLeft <= 10 ? "rgba(239,68,68,0.12)" : HNC.accentLight,
+                  border: `1px solid ${phaseSecsLeft <= 10 ? "rgba(239,68,68,0.35)" : HNC.borderCard}`,
+                  color: phaseSecsLeft <= 10 ? "#ef4444" : HNC.accent,
+                  minWidth: "3.5rem",
+                }}
+              >
+                <span>⏱</span>
+                <span>{phaseSecsLeft}s</span>
+              </div>
+            )}
             {/* Score progress pill */}
             {scoreToWin > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ background: HNC.accentLight, border: `1px solid ${HNC.borderCard}` }}>
@@ -656,6 +694,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
         {/* GIVING CLUE — cue giver */}
         {gs.sub_phase === "giving-clue" && amICueGiver && (
           <div className="hnc-card rounded-2xl p-4">
+            {/* countdown bar */}
+            <div className="mb-3 rounded-full overflow-hidden" style={{ height: 4, background: "rgba(200,190,230,0.25)" }}>
+              <div style={{ height: "100%", width: `${(phaseSecsLeft / PHASE_DURATION) * 100}%`, background: phaseSecsLeft <= 10 ? "#ef4444" : HNC.accent, transition: "width 1s linear, background 0.5s" }} />
+            </div>
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-16 h-16 rounded-xl border-2 shadow-lg flex-shrink-0"
@@ -700,6 +742,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
         {/* GIVING CLUE — waiting players */}
         {gs.sub_phase === "giving-clue" && !amICueGiver && (
           <div className="hnc-card rounded-2xl p-4 text-center">
+            {/* countdown bar */}
+            <div className="mb-3 rounded-full overflow-hidden" style={{ height: 3, background: "rgba(200,190,230,0.2)" }}>
+              <div style={{ height: "100%", width: `${(phaseSecsLeft / PHASE_DURATION) * 100}%`, background: phaseSecsLeft <= 10 ? "#ef4444" : HNC.accent, transition: "width 1s linear, background 0.5s" }} />
+            </div>
             <div className="text-3xl mb-2 animate-pulse">🎨</div>
             <p className="text-sm" style={{ color: HNC.textSec }}>
               {t.cueGiverIs}: <span style={{ color: HNC.textPrim }}>{cueGiver?.name}</span>
@@ -711,6 +757,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
         {/* GUESSING — cue giver controls */}
         {gs.sub_phase === "guessing" && amICueGiver && (
           <div className="hnc-card rounded-2xl p-4 space-y-3">
+            {/* countdown bar */}
+            <div className="rounded-full overflow-hidden" style={{ height: 3, background: "rgba(200,190,230,0.2)" }}>
+              <div style={{ height: "100%", width: `${(phaseSecsLeft / PHASE_DURATION) * 100}%`, background: phaseSecsLeft <= 10 ? "#ef4444" : "#22c55e", transition: "width 1s linear, background 0.5s" }} />
+            </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div
@@ -763,6 +813,10 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
         {/* GUESSING — guesser status */}
         {gs.sub_phase === "guessing" && !amICueGiver && (
           <div className="hnc-card rounded-2xl p-4 text-center">
+            {/* countdown bar */}
+            <div className="mb-3 rounded-full overflow-hidden" style={{ height: 3, background: "rgba(200,190,230,0.2)" }}>
+              <div style={{ height: "100%", width: `${(phaseSecsLeft / PHASE_DURATION) * 100}%`, background: phaseSecsLeft <= 10 ? "#ef4444" : "#22c55e", transition: "width 1s linear, background 0.5s" }} />
+            </div>
             <p className="text-sm mb-1" style={{ color: HNC.textSec }}>
               {myGuess ? "✓ " : "○ "}
               <span style={{ color: myGuess ? "#22c55e" : HNC.textPrim }}>

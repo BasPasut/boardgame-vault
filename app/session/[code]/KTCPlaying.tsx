@@ -195,6 +195,7 @@ export default function KTCPlaying({
 
   const speech = useSpeechRecognition({ lang: "th-TH" });
   const needsSafariWarn = useNeedsSafariWarning();
+  const micAutoRef = useRef(false); // tracks whether we auto-opened the mic this turn
 
   // Derived
   const currentTurnId =
@@ -206,11 +207,28 @@ export default function KTCPlaying({
   const secsLeft = useTurnCountdown(gs.turn_started_at, gs.turn_duration_s);
   const challengeSecsLeft = useChallengeCountdown(gs.challenge?.discussion_end_at ?? null);
 
-  // Sync speech transcript → input (no turn gate — avoids stale-closure miss)
+  // Auto-open mic when it becomes my active turn; close when it's not
   useEffect(() => {
-    if (speech.transcript) {
-      setWordInput(speech.transcript);
-      speech.reset();
+    const shouldListen = isMyTurn && isActive && !turnPending && speech.supported && !submitting;
+    if (shouldListen && !speech.isListening && !micAutoRef.current) {
+      micAutoRef.current = true;
+      speech.start();
+    }
+    if (!shouldListen) {
+      micAutoRef.current = false;
+      if (speech.isListening) speech.stop();
+    }
+  }, [isMyTurn, isActive, turnPending, submitting]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When mic detects a word → auto-submit (no button click needed)
+  useEffect(() => {
+    if (!speech.transcript) return;
+    const word = speech.transcript;
+    speech.reset();
+    micAutoRef.current = false; // allow mic to re-open after next valid turn
+    if (isMyTurn && isActive && !turnPending && !submitting) {
+      setWordInput(word);
+      handleSubmitWord(word);
     }
   }, [speech.transcript]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -312,23 +330,20 @@ export default function KTCPlaying({
         },
       }).eq("code", code);
     } else {
-      // Continue — reset words (new sub-round) and advance turn
+      // Continue — reset words (new sub-round) and advance turn to next-in-line
+      // Simple rule: the player who was AFTER the eliminated one takes the turn.
+      // Since we removed eliminatedId from active_players, that player is now at
+      // index `elimIdx` in the new array (or wraps to 0 if at the end).
       const elimIdx = fresh.active_players.indexOf(eliminatedId);
-      const oldTurnMod = fresh.current_turn_index % fresh.active_players.length;
-      let newTurnIdx =
-        elimIdx <= oldTurnMod
-          ? Math.max(0, oldTurnMod - 1) % newActive.length
-          : oldTurnMod % newActive.length;
-      // Safety clamp
-      newTurnIdx = newTurnIdx % newActive.length;
+      const newTurnIdx = elimIdx % Math.max(1, newActive.length);
 
       await supabase.from("sessions").update({
         game_state: {
           ...fresh,
           active_players: newActive,
-          words: [], // reset sub-round
+          words: [], // reset sub-round word chain
           current_turn_index: newTurnIdx,
-          turn_started_at: null, // next player must manually start
+          turn_started_at: now(), // timer starts immediately for the next player
           challenge: null,
           event_log: [...fresh.event_log, elimLog],
         },
@@ -390,13 +405,13 @@ export default function KTCPlaying({
 
     const nextIdx = (fresh.current_turn_index + 1) % fresh.active_players.length;
 
-    // Set turn_started_at to null — next player must manually start their turn
+    // Timer starts immediately for the next player after a valid word is submitted
     await supabase.from("sessions").update({
       game_state: {
         ...fresh,
         words: [...fresh.words, newWord],
         current_turn_index: nextIdx,
-        turn_started_at: null,
+        turn_started_at: now(),
         event_log: [...fresh.event_log, wordLog],
       },
     }).eq("code", code);
@@ -1067,54 +1082,60 @@ export default function KTCPlaying({
               </div>
             )}
 
-            <div className="flex gap-2">
-              {/* Mic button */}
+            <div className="flex gap-2 items-center">
+              {/* Mic status indicator — auto-controlled, tap to force toggle */}
               {!needsSafariWarn && speech.supported && (
                 <button
-                  onClick={() => speech.isListening ? speech.stop() : speech.start()}
+                  onClick={() => {
+                    micAutoRef.current = !speech.isListening;
+                    speech.isListening ? speech.stop() : speech.start();
+                  }}
                   disabled={submitting}
                   className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all"
                   style={{
                     background: speech.isListening
                       ? "rgba(239,68,68,0.25)"
-                      : "rgba(245,158,11,0.15)",
-                    border: `2px solid ${speech.isListening ? "#ef4444" : KTC.borderInput}`,
+                      : "rgba(245,158,11,0.08)",
+                    border: `2px solid ${speech.isListening ? "#ef4444" : "rgba(245,158,11,0.2)"}`,
                     boxShadow: speech.isListening ? "0 0 16px rgba(239,68,68,0.4)" : undefined,
                   }}
+                  title={speech.isListening ? "กำลังฟัง... (แตะเพื่อหยุด)" : "แตะเพื่อเปิดไมค์"}
                 >
                   <span className="text-2xl">{speech.isListening ? "🔴" : "🎙️"}</span>
                 </button>
               )}
 
-              {/* Text input */}
+              {/* Text input — also accepts manual typing + Enter to submit */}
               <input
                 value={wordInput}
                 onChange={(e) => {
                   setWordInput(e.target.value);
                   setSubmitError(null);
                 }}
-                onKeyDown={(e) => e.key === "Enter" && !submitting && handleSubmitWord(wordInput)}
-                placeholder="พิมพ์คำ..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !submitting && wordInput.trim()) {
+                    speech.stop();
+                    micAutoRef.current = false;
+                    handleSubmitWord(wordInput);
+                  }
+                }}
+                placeholder={speech.isListening ? "กำลังฟัง..." : "พิมพ์คำ + Enter..."}
                 disabled={submitting}
                 className="flex-1 px-4 py-3 rounded-xl text-lg font-bold focus:outline-none"
                 style={{
                   background: KTC.bgInput,
-                  border: `1.5px solid ${KTC.borderInput}`,
+                  border: `1.5px solid ${speech.isListening ? "rgba(239,68,68,0.5)" : KTC.borderInput}`,
                   color: KTC.textPrim,
                 }}
                 autoFocus
               />
-
-              {/* Submit */}
-              <button
-                onClick={() => handleSubmitWord(wordInput)}
-                disabled={submitting || !wordInput.trim()}
-                className="px-5 py-3 rounded-xl font-bold text-base flex-shrink-0 disabled:opacity-40 transition-all"
-                style={{ background: "rgba(245,158,11,0.2)", border: "1.5px solid rgba(245,158,11,0.5)", color: KTC.accent }}
-              >
-                {submitting ? "..." : "ส่ง"}
-              </button>
             </div>
+
+            {speech.supported && !speech.isListening && !needsSafariWarn && (
+              <p className="text-xs text-center" style={{ color: KTC.textMuted }}>
+                🎙️ ไมค์เปิดอัตโนมัติ • พูดหรือพิมพ์ + Enter
+              </p>
+            )}
           </div>
         )}
 

@@ -340,19 +340,23 @@ const GUIDES: Record<string, {
         accent: "rgba(34,197,94,0.15)",
         steps: {
           en: [
-            "When it's your turn, you have 8 seconds to say or type a Thai word.",
-            "Tap 🎙️ to speak (Safari/Chrome desktop) or type directly in the text box.",
+            "When it's your turn, the mic opens automatically — just speak your Thai word aloud. No button needed!",
+            "You have 10 seconds to say your word. The timer starts immediately when it's your turn.",
+            "Once the mic detects your word, it's submitted automatically — the timer stops and validation runs instantly.",
+            "Prefer typing? Tap anywhere on the input field to type manually, then press Enter or wait for auto-submit.",
             "Your word must NOT share any 2+ character substring with any word already said this sub-round.",
-            "If your word is valid, it's added to the list and the next player goes.",
-            "If your word has a common substring — or you run out of time — you're eliminated from this round.",
+            "If your word is valid, the timer resets and the next player's turn starts right away.",
+            "If your word has a conflicting substring — or you run out of time — you're eliminated from this round and the next player continues.",
             "The word list resets after each elimination (new sub-round begins).",
           ],
           th: [
-            "เมื่อถึงตาคุณ คุณมีเวลา 8 วินาทีเพื่อพูดหรือพิมพ์คำภาษาไทย",
-            "แตะ 🎙️ เพื่อพูด (Safari/Chrome desktop) หรือพิมพ์ตรงในช่องข้อความ",
+            "เมื่อถึงตาคุณ ไมค์จะเปิดอัตโนมัติ — แค่พูดคำภาษาไทยออกมาเลย ไม่ต้องกดปุ่ม!",
+            "คุณมีเวลา 10 วินาทีเพื่อพูดคำ นาฬิกาเริ่มทันทีเมื่อถึงตาคุณ",
+            "เมื่อไมค์ตรวจจับคำได้ จะส่งอัตโนมัติ — นาฬิกาหยุดและตรวจสอบความถูกต้องทันที",
+            "อยากพิมพ์แทน? แตะช่องพิมพ์เพื่อพิมพ์ด้วยตนเอง แล้วกด Enter หรือรอ auto-submit",
             "คำของคุณต้องไม่มีพยางค์ย่อย 2+ ตัวอักษรร่วมกับคำใดก็ตามที่พูดในรอบย่อยนี้",
-            "ถ้าคำของคุณ valid จะเพิ่มลงในรายการและผู้เล่นคนถัดไปจะเล่น",
-            "ถ้าคำมีพยางค์ร่วม — หรือหมดเวลา — คุณออกจากรอบนี้",
+            "ถ้าคำ valid นาฬิกาจะรีเซ็ตและตาผู้เล่นคนถัดไปเริ่มทันที",
+            "ถ้าคำมีพยางค์ย่อยขัดกัน — หรือหมดเวลา — คุณออกจากรอบนี้และผู้เล่นถัดไปดำเนินต่อ",
             "รายการคำจะรีเซ็ตหลังจากแต่ละการออก (รอบย่อยใหม่เริ่ม)",
           ],
         },
@@ -390,8 +394,8 @@ const GUIDES: Record<string, {
           },
           {
             icon: "⏱️",
-            title: "8-second timer",
-            body: "You have exactly 8 seconds to submit your word after the previous player's turn ends. If the timer runs out, you're eliminated from this round. No extensions!",
+            title: "10-second timer",
+            body: "You have exactly 10 seconds to submit your word. The mic opens automatically when it's your turn — just speak! The timer starts immediately and stops the moment your word is detected. If time runs out, you're eliminated. No extensions!",
           },
           {
             icon: "♻️",
@@ -400,8 +404,8 @@ const GUIDES: Record<string, {
           },
           {
             icon: "🎙️",
-            title: "Mic + text input",
-            body: "Use the 🎙️ microphone button to speak your word (works best in Safari on iOS, or Chrome on desktop). Alternatively, type the word manually. For iOS users: please use Safari — Chrome on iOS doesn't support Web Speech API.",
+            title: "Auto-mic + text input",
+            body: "The mic opens automatically on your turn and closes when it's not your turn — no button tapping needed. Once speech is detected, it submits immediately. You can also tap the mic button to toggle it manually, or type in the text box and press Enter. Works best in Safari on iOS or Chrome on desktop. iOS users: use Safari — Chrome on iOS doesn't support the Web Speech API.",
           },
           {
             icon: "🚨",
@@ -422,8 +426,8 @@ const GUIDES: Record<string, {
           },
           {
             icon: "⏱️",
-            title: "ตัวจับเวลา 8 วินาที",
-            body: "คุณมีเวลา 8 วินาทีเพื่อส่งคำหลังจากตาผู้เล่นก่อนหน้าจบ ถ้าหมดเวลา คุณออกจากรอบนี้ ไม่มีการต่อเวลา!",
+            title: "ตัวจับเวลา 10 วินาที",
+            body: "คุณมีเวลา 10 วินาทีเพื่อส่งคำ ไมค์จะเปิดอัตโนมัติเมื่อถึงตา — แค่พูดออกมาเลย! นาฬิกาเริ่มทันทีและหยุดเมื่อตรวจจับคำได้ ถ้าหมดเวลา คุณออกจากรอบนี้ ไม่มีการต่อเวลา!",
           },
           {
             icon: "♻️",
@@ -432,8 +436,8 @@ const GUIDES: Record<string, {
           },
           {
             icon: "🎙️",
-            title: "ไมค์ + พิมพ์",
-            body: "ใช้ปุ่ม 🎙️ เพื่อพูดคำ (ทำงานดีที่สุดใน Safari บน iOS หรือ Chrome บน desktop) หรือพิมพ์คำด้วยตนเอง สำหรับผู้ใช้ iOS: กรุณาใช้ Safari — Chrome บน iOS ไม่รองรับ Web Speech API",
+            title: "ไมค์อัตโนมัติ + พิมพ์",
+            body: "ไมค์จะเปิดอัตโนมัติเมื่อถึงตาและปิดเมื่อไม่ใช่ตาคุณ — ไม่ต้องกดปุ่ม เมื่อตรวจจับเสียงได้จะส่งทันที คุณยังสามารถแตะปุ่มไมค์เพื่อเปิด/ปิดเอง หรือพิมพ์ในช่องข้อความแล้วกด Enter ทำงานดีที่สุดใน Safari บน iOS หรือ Chrome บน desktop ผู้ใช้ iOS: ใช้ Safari — Chrome บน iOS ไม่รองรับ Web Speech API",
           },
           {
             icon: "🚨",

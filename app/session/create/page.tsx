@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { generateSessionCode, generatePlayerId } from "@/lib/utils/session";
@@ -11,7 +12,6 @@ import { ORDERED_GAMES } from "@/lib/games/registry";
 import type { Language } from "@/types/game";
 
 // ORDERED_GAMES is sorted: available first, then coming-soon.
-// Adding a new game: update lib/games/registry.ts only — nothing here changes.
 
 function CreateSessionForm() {
   const router = useRouter();
@@ -23,22 +23,35 @@ function CreateSessionForm() {
   const defaultGame = searchParams.get("game") ?? ORDERED_GAMES.find(g => g.available)?.id ?? "";
   const [name, setName] = useState("");
   const [selectedGame, setSelectedGame] = useState(defaultGame);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedConfig = ORDERED_GAMES.find(g => g.id === selectedGame);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const t = {
     en: {
       back: "← Back",
       title: "Create Session",
       subtitle: "Set up your game room",
-      selectGame: "Select Game",
+      selectGame: "Choose Game",
       yourName: `Your Name (${selectedConfig?.lobby.en.hostLabel ?? "Host"})`,
       namePlaceholder: "Enter your name...",
       create: "Create Room",
       creating: "Creating...",
-      comingSoon: "Coming Soon",
+      comingSoon: "Soon",
       errorMsg: "Failed to create room. Please try again.",
     },
     th: {
@@ -69,7 +82,7 @@ function CreateSessionForm() {
       code,
       game_id: selectedGame,
       phase: "lobby",
-      game_state: config.initialState(),   // ← comes from the game's own config
+      game_state: config.initialState(),
     });
 
     if (sessionErr) {
@@ -95,12 +108,23 @@ function CreateSessionForm() {
     router.push(`/session/${code}?host=true`);
   };
 
+  const categoryIcon: Record<string, string> = {
+    deduction: "🔍",
+    exploration: "🗺️",
+    party: "🎉",
+  };
+
+  const availableGames = ORDERED_GAMES.filter(g => g.available);
+  const comingSoon = ORDERED_GAMES.filter(g => !g.available);
+
   return (
     <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
+      {/* BG texture */}
       <div className="fixed inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "url('/images/platform/bg-create-session.png')", backgroundSize: "cover", backgroundPosition: "center" }} />
 
-      <div className="relative z-10 max-w-2xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-10">
+      <div className="relative z-10 max-w-lg mx-auto px-5 py-8">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-8">
           <Link href="/" className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm no-underline">{t.back}</Link>
           <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-4 py-2 rounded-lg text-sm">
             <span style={{ color: lang === "en" ? "#d4af37" : "#5a4a3a" }}>EN</span>
@@ -109,53 +133,124 @@ function CreateSessionForm() {
           </button>
         </div>
 
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.title}</h1>
-          <p style={{ color: "#7a6a5a" }}>{t.subtitle}</p>
+        {/* Title */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-black mb-1" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>{t.title}</h1>
+          <p className="text-sm" style={{ color: "#5a4a3a" }}>{t.subtitle}</p>
         </div>
 
-        <div className="gothic-card rounded-2xl p-8 space-y-8">
-          {/* Game selector — auto-populated from GAME_REGISTRY */}
+        <div className="space-y-5">
+          {/* ── Game picker dropdown ── */}
           <div>
-            <label className="block text-sm font-medium mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+            <label className="block text-xs font-medium mb-2 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.selectGame}
             </label>
-            <div className="space-y-3">
-              {ORDERED_GAMES.map((game) => (
-                <button
-                  key={game.id}
-                  onClick={() => game.available && setSelectedGame(game.id)}
-                  disabled={!game.available}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all text-left ${
-                    selectedGame === game.id
-                      ? "border-yellow-600/80 bg-yellow-900/20"
-                      : game.available
-                      ? "border-yellow-900/30 hover:border-yellow-700/50"
-                      : "border-slate-800/30 opacity-40 cursor-not-allowed"
-                  }`}
-                >
-                  <div>
-                    <div className="font-medium" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
-                      {game.name[lang]}
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: "#5a4a3a" }}>
-                      {game.minPlayers}–{game.maxPlayers} players · {game.estimatedTime}
-                    </div>
+
+            <div ref={dropdownRef} className="relative">
+              {/* Trigger */}
+              <button
+                onClick={() => setDropdownOpen(v => !v)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                style={{
+                  background: "rgba(13,10,26,0.85)",
+                  border: dropdownOpen ? "1px solid rgba(212,175,55,0.6)" : "1px solid rgba(212,175,55,0.25)",
+                  boxShadow: dropdownOpen ? "0 0 20px rgba(212,175,55,0.12)" : undefined,
+                }}
+              >
+                {/* Cover thumbnail */}
+                {selectedConfig?.coverImage ? (
+                  <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(212,175,55,0.2)" }}>
+                    <Image src={selectedConfig.coverImage} alt="" fill sizes="80px" className="object-cover" />
                   </div>
-                  {!game.available && (
-                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
-                      {t.comingSoon}
-                    </span>
+                ) : (
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-xl" style={{ background: "rgba(45,27,78,0.6)" }}>
+                    {categoryIcon[selectedConfig?.category ?? "party"] ?? "🎮"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                    {selectedConfig?.name[lang] ?? "—"}
+                  </p>
+                  <p className="text-xs truncate mt-0.5" style={{ color: "#5a4a3a" }}>
+                    {selectedConfig ? `${selectedConfig.minPlayers}–${selectedConfig.maxPlayers} players · ${selectedConfig.estimatedTime}` : ""}
+                  </p>
+                </div>
+                <span className="text-sm flex-shrink-0" style={{ color: "#5a4a3a", transition: "transform 0.2s", transform: dropdownOpen ? "rotate(180deg)" : "none" }}>▼</span>
+              </button>
+
+              {/* Dropdown panel */}
+              {dropdownOpen && (
+                <div
+                  className="absolute top-full left-0 right-0 mt-2 rounded-xl overflow-hidden z-30"
+                  style={{ background: "rgba(13,8,20,0.98)", border: "1px solid rgba(212,175,55,0.2)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", backdropFilter: "blur(12px)" }}
+                >
+                  {/* Available games */}
+                  {availableGames.map((game) => (
+                    <button
+                      key={game.id}
+                      onClick={() => { setSelectedGame(game.id); setDropdownOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
+                      style={{
+                        background: selectedGame === game.id ? "rgba(212,175,55,0.1)" : "transparent",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(212,175,55,0.07)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = selectedGame === game.id ? "rgba(212,175,55,0.1)" : "transparent")}
+                    >
+                      {game.coverImage ? (
+                        <div className="relative w-9 h-9 rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                          <Image src={game.coverImage} alt="" fill sizes="72px" className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg" style={{ background: "rgba(45,27,78,0.5)" }}>
+                          {categoryIcon[game.category] ?? "🎮"}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{game.name[lang]}</p>
+                        <p className="text-xs truncate" style={{ color: "#5a4a3a" }}>{game.minPlayers}–{game.maxPlayers}p · {game.estimatedTime}</p>
+                      </div>
+                      {selectedGame === game.id && <span style={{ color: "#d4af37", fontSize: 14 }}>✓</span>}
+                    </button>
+                  ))}
+
+                  {/* Coming soon — dimmed, not clickable */}
+                  {comingSoon.length > 0 && (
+                    <div className="px-4 pt-2 pb-1">
+                      <p className="text-xs tracking-widest uppercase" style={{ color: "#3a2a1a" }}>{t.comingSoon}</p>
+                    </div>
                   )}
-                  {selectedGame === game.id && <span className="text-yellow-400">✓</span>}
-                </button>
-              ))}
+                  {comingSoon.map((game) => (
+                    <div
+                      key={game.id}
+                      className="flex items-center gap-3 px-4 py-2.5 opacity-35"
+                    >
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg" style={{ background: "rgba(30,20,40,0.5)" }}>
+                        {categoryIcon[game.category] ?? "🎮"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate" style={{ color: "#7a6a5a" }}>{game.name[lang]}</p>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(90,74,58,0.3)", color: "#5a4a3a" }}>
+                        {t.comingSoon}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Selected game tagline */}
+            {selectedConfig?.tagline[lang] && (
+              <p className="text-xs mt-2 px-1" style={{ color: "#5a4a3a", fontStyle: "italic" }}>
+                {selectedConfig.tagline[lang]}
+              </p>
+            )}
           </div>
 
-          {/* Host name */}
+          {/* ── Host name ── */}
           <div>
-            <label className="block text-sm font-medium mb-3 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+            <label className="block text-xs font-medium mb-2 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
               {t.yourName}
             </label>
             <input
@@ -164,7 +259,7 @@ function CreateSessionForm() {
               placeholder={t.namePlaceholder}
               maxLength={20}
               className="w-full px-4 py-3 rounded-xl focus:outline-none transition-colors"
-              style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
+              style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.25)", color: "#e8d5b0" }}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
           </div>

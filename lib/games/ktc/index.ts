@@ -123,7 +123,7 @@ export const ktcConfig: GameConfig = {
     active_players: [],
     current_turn_index: 0,
     turn_started_at: null,
-    turn_duration_s: 8,
+    turn_duration_s: 10,
     words: [],
     scores: {},
     challenge: null,

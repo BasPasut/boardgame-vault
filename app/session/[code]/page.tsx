@@ -986,12 +986,24 @@ function SessionRoom() {
             <div className="space-y-2">
               {players.map((p) => (
                 <div key={p.id} className="flex items-center gap-3 py-2 px-3 rounded-lg" style={{ background: "rgba(45,27,78,0.4)" }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: p.isStoryteller ? "rgba(212,175,55,0.2)" : "rgba(139,26,26,0.2)", color: p.isStoryteller ? "#d4af37" : "#e8d5b0" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: p.isStoryteller ? "rgba(212,175,55,0.2)" : "rgba(139,26,26,0.2)", color: p.isStoryteller ? "#d4af37" : "#e8d5b0" }}>
                     {p.name[0].toUpperCase()}
                   </div>
-                  <span style={{ color: "#e8d5b0" }}>{p.name}</span>
-                  {p.isStoryteller && <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: "rgba(212,175,55,0.15)", color: "#d4af37" }}>{t.hostLabel}</span>}
-                  {p.id === myPlayerId && !p.isStoryteller && <span className="text-xs ml-auto" style={{ color: "#5a4a3a" }}>you</span>}
+                  <span className="flex-1 min-w-0 truncate" style={{ color: "#e8d5b0" }}>{p.name}</span>
+                  {p.isStoryteller && <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(212,175,55,0.15)", color: "#d4af37" }}>{t.hostLabel}</span>}
+                  {p.id === myPlayerId && !p.isStoryteller && <span className="text-xs flex-shrink-0" style={{ color: "#5a4a3a" }}>you</span>}
+                  {isHost && !p.isStoryteller && (
+                    <button
+                      onClick={async () => {
+                        await supabase.from("players").delete().eq("id", p.id);
+                      }}
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-xs leading-none transition-opacity opacity-40 hover:opacity-100"
+                      style={{ background: "rgba(139,26,26,0.4)", color: "#c08080", border: "1px solid rgba(192,128,128,0.3)" }}
+                      title={lang === "en" ? "Remove player" : "นำผู้เล่นออก"}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
