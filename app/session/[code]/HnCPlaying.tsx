@@ -14,19 +14,8 @@ import {
   GRID_ROWS,
 } from "@/lib/games/hues-and-cues/colors";
 import type { Player } from "@/types/game";
-
-export interface HnCGameState {
-  round: number;
-  total_rounds: number;
-  score_to_win: number;
-  cue_giver_order: string[];
-  target: { x: number; y: number };
-  clues: string[];
-  sub_phase: "giving-clue" | "guessing" | "reveal";
-  guesses: Record<string, { x: number; y: number }>;
-  scores: Record<string, number>;
-  round_scores?: Record<string, number>;
-}
+import type { HnCGameState } from "@/lib/games/hues-and-cues/types";
+export type { HnCGameState }; // re-export so existing imports from this file still work
 
 interface HnCDbSession {
   code: string;
