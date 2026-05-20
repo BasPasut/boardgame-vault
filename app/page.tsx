@@ -361,9 +361,69 @@ export default function HomePage() {
       </section>
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <footer className="relative z-10 text-center pb-10 px-6 space-y-1">
-        <p className="text-sm" style={{ color: "#3a2a1a" }}>BoardgameVault — Bringing physical games to the digital realm</p>
-        <p className="text-xs" style={{ color: "#2a1a1a" }}>{availableCount} games live · more coming soon</p>
+      <footer className="relative z-10 mt-8 px-4 sm:px-8 pb-12">
+        {/* Divider */}
+        <div className="max-w-7xl mx-auto mb-8">
+          <div className="h-px w-full" style={{ background: "linear-gradient(to right, transparent, rgba(212,175,55,0.2), transparent)" }} />
+        </div>
+
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+          {/* Brand */}
+          <div className="flex flex-col items-center sm:items-start gap-2">
+            <div className="flex items-center gap-2">
+              <VaultIcon />
+              <span className="font-bold tracking-widest text-shimmer" style={{ fontFamily: "var(--font-gothic)", fontSize: 15 }}>
+                BoardgameVault
+              </span>
+            </div>
+            <p className="text-xs text-center sm:text-left" style={{ color: "#3a2a1a", maxWidth: 220 }}>
+              Bringing physical games to the digital realm
+            </p>
+          </div>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <p className="text-lg font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                {availableCount}
+              </p>
+              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+                {lang === "th" ? "เกมพร้อมเล่น" : "Games live"}
+              </p>
+            </div>
+            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.15)" }} />
+            <div className="text-center">
+              <p className="text-lg font-black" style={{ color: "#7c6cf0", fontFamily: "var(--font-gothic)" }}>
+                ∞
+              </p>
+              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+                {lang === "th" ? "ผู้เล่นพร้อมกัน" : "Concurrent players"}
+              </p>
+            </div>
+            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.15)" }} />
+            <div className="text-center">
+              <p className="text-lg font-black" style={{ color: "#c0403a", fontFamily: "var(--font-gothic)" }}>
+                Free
+              </p>
+              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+                {lang === "th" ? "ไม่มีค่าใช้จ่าย" : "Always"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom strip */}
+        <div className="max-w-7xl mx-auto mt-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="text-xs" style={{ color: "#2a1a1a" }}>
+            © {new Date().getFullYear()} BoardgameVault · No boxes required.
+          </p>
+          <div className="flex items-center gap-1" style={{ color: "#2a1a1a" }}>
+            <GrimoireIcon />
+            <span className="text-xs ml-1">
+              {lang === "th" ? "เพิ่มเกมใหม่เร็วๆ นี้" : "More games coming soon"}
+            </span>
+          </div>
+        </div>
       </footer>
     </div>
   );
