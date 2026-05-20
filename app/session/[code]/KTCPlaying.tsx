@@ -206,6 +206,7 @@ export default function KTCPlaying({
   const isActive = gs.active_players.includes(myPlayerId ?? "");
   const secsLeft = useTurnCountdown(gs.turn_started_at, gs.turn_duration_s);
   const challengeSecsLeft = useChallengeCountdown(gs.challenge?.discussion_end_at ?? null);
+  const turnPending = gs.turn_started_at === null; // waiting for manual start
 
   // Auto-open mic when it becomes my active turn; close when it's not
   useEffect(() => {
@@ -831,7 +832,6 @@ export default function KTCPlaying({
   // always discoverable.
   const canShowChallenge = isActive && gs.words.length > 0 && myPlayerId !== null;
   const canChallenge = canShowChallenge && lastWord?.player_id !== myPlayerId;
-  const turnPending = gs.turn_started_at === null; // waiting for manual start
 
   return (
     <div
