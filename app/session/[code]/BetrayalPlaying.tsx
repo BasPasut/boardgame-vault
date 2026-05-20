@@ -1768,7 +1768,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage` });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-the-smell") {
-        const roll = rollDice(2);
+        const roll = rollDice(3);
         const total = roll.reduce((a, b) => a + b, 0);
         if (total <= 4) {
           updatedState.might = Math.max(myState.might - 2, 0);

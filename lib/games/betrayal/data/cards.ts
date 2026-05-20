@@ -42,7 +42,7 @@ export const EVENT_CARDS: CardDefinition[] = [
   { id: "ev-portrait",       type: "event", name: "Screaming Portrait", image: "/images/games/betrayal/cards/events/event-portrait.png",    description: "Every player on this floor loses 1 Sanity.", flavour: "The eyes were always watching." },
   { id: "ev-falling",        type: "event", name: "Falling",         image: "/images/games/betrayal/cards/events/event-falling.png",        description: "Roll 2 dice. Lose that many Might. Minimum 0.", flavour: "Someone pushed. Or something." },
   { id: "ev-discovery",      type: "event", name: "Discovery",       image: "/images/games/betrayal/cards/events/event-discovery.png",      description: "Draw 2 item cards. Keep one, return the other to the bottom of the deck.", flavour: "The journal entry is dated today." },
-  { id: "ev-the-smell",      type: "event", name: "The Smell",       image: "/images/games/betrayal/cards/events/event-the-smell.png",      description: "Roll 2 dice. On 5+: nothing. On 4 or less: a monster appears — lose 2 Might in the struggle.", flavour: "Something is very close." },
+  { id: "ev-the-smell",      type: "event", name: "The Smell",       image: "/images/games/betrayal/cards/events/event-the-smell.png",      description: "Roll 3 dice. On 5+: you back away in time. On 4 or less: a monster appears — lose 2 Might in the struggle.", flavour: "Something is very close." },
 ];
 
 export function getCard(id: string): CardDefinition | undefined {
