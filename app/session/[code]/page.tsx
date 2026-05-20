@@ -664,8 +664,13 @@ function SessionRoom() {
   };
 
   const handleSelectBetrayalCharacter = async (charId: string) => {
-    if (!myPlayerId || !dbSession) return;
-    const current = dbSession.game_state as unknown as Record<string, unknown>;
+    if (!myPlayerId) return;
+    // Fetch fresh state directly — avoids the race where dbSession is still null
+    // on first click (localStorage sets myPlayerId synchronously but dbSession
+    // arrives ~1-2 s later from Supabase).
+    const { data } = await supabase.from("sessions").select("game_state").eq("code", code).single();
+    if (!data) return;
+    const current = data.game_state as unknown as Record<string, unknown>;
     const character_selections = { ...(current.character_selections as Record<string, string> ?? {}), [myPlayerId]: charId };
     await supabase.from("sessions").update({
       game_state: { ...current, character_selections },
