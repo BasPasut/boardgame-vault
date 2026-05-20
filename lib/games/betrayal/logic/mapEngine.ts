@@ -147,6 +147,22 @@ export function findValidRotation(
   return null; // no valid rotation (rare — tile has no suitable door)
 }
 
+/**
+ * Like findValidRotation but satisfies ALL required doors simultaneously.
+ * Used when a new tile position has multiple placed neighbors with open doors toward it.
+ */
+export function findValidRotationMulti(
+  tileId: string, requiredDoors: Direction[],
+): { rotation: Rotation; doors: Doors } | null {
+  const def = getTile(tileId);
+  if (!def) return null;
+  for (const r of [0, 90, 180, 270] as Rotation[]) {
+    const d = rotateDoors(def.doors, r);
+    if (requiredDoors.every((rd) => d[rd])) return { rotation: r, doors: d };
+  }
+  return null;
+}
+
 /** Build a new PlacedTile at (floor, x, y) connecting from fromDir */
 export function buildPlacedTile(
   tileId: string, floor: Floor, x: number, y: number,

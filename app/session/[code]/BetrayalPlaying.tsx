@@ -13,7 +13,7 @@ import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/gam
 import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
   getReachable, getUnexploredDoors, buildPlacedTile,
-  buildStartingTiles, tileAt,
+  buildStartingTiles, tileAt, findValidRotationMulti,
 } from "@/lib/games/betrayal/logic/mapEngine";
 import type { Player } from "@/types/game";
 import { useBotEngine } from "@/lib/games/betrayal/botEngine";
@@ -1290,6 +1290,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     });
   }, [gs, myState, myPlayerId, players]);
 
+  // Phase-independent check: is there an opponent on the same tile right now?
+  const canAttack = useMemo(() => {
+    if (gs.phase !== "haunt" || !myState) return false;
+    return players.some((p) => {
+      if (p.id === myPlayerId) return false;
+      const ps = gs.player_states[p.id];
+      if (!ps || ps.is_dead) return false;
+      if (ps.is_traitor === myState.is_traitor) return false;
+      return ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+  }, [gs.phase, gs.player_states, myState, myPlayerId, players]);
+
   // Revolver targets: enemies on the same floor (ranged)
   const revolverTargets = useMemo(() => {
     if (gs.phase !== "haunt" || !myState || gs.turn_phase !== "action") return [];
@@ -1375,20 +1387,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const pool = gs.remaining_tiles[floor];
     if (pool.length === 0) return;
 
-    // Figure out required door direction: the new tile must have a door facing TOWARD its placed neighbor.
-    const dirs = [
-      { dx: 0, dy: -1, requiredDoor: "north" as const },
-      { dx: 0, dy: 1,  requiredDoor: "south" as const },
-      { dx: 1, dy: 0,  requiredDoor: "east"  as const },
-      { dx: -1, dy: 0, requiredDoor: "west"  as const },
+    // Collect ALL required doors: every adjacent placed tile that has an open door
+    // pointing toward (x,y). The new tile must have matching doors for ALL of them.
+    const OPP: Record<string, "north" | "south" | "east" | "west"> = {
+      north: "south", south: "north", east: "west", west: "east",
+    };
+    const adjCheck = [
+      { dx: 0, dy: -1, dir: "north" as const },
+      { dx: 0, dy: 1,  dir: "south" as const },
+      { dx: 1, dy: 0,  dir: "east"  as const },
+      { dx: -1, dy: 0, dir: "west"  as const },
     ];
-    let requiredDoor: "north" | "south" | "east" | "west" = "south";
-    for (const { dx, dy, requiredDoor: rd } of dirs) {
+    const requiredDoors: ("north" | "south" | "east" | "west")[] = [];
+    for (const { dx, dy, dir } of adjCheck) {
       const adj = tileAt(gs.placed_tiles, floor, x + dx, y + dy);
-      if (adj) { requiredDoor = rd; break; }
+      if (adj && adj.doors[OPP[dir]]) requiredDoors.push(dir);
     }
+    if (requiredDoors.length === 0) requiredDoors.push("south"); // safety fallback
 
-    // Try tiles in random order until one fits the required door
+    // Try tiles in random order until one satisfies ALL required doors
     const startIdx = Math.floor(Math.random() * pool.length);
     let placed = null;
     let tileId = "";
@@ -1396,15 +1413,15 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     for (let attempt = 0; attempt < pool.length; attempt++) {
       const idx = (startIdx + attempt) % pool.length;
       const candidate = pool[idx];
-      const candidatePlaced = buildPlacedTile(candidate, floor, x, y, requiredDoor, myPlayerId!);
-      if (candidatePlaced) {
-        placed = candidatePlaced;
+      const valid = findValidRotationMulti(candidate, requiredDoors);
+      if (valid) {
+        placed = { tile_id: candidate, floor, x, y, rotation: valid.rotation, doors: valid.doors, revealed_by: myPlayerId! };
         tileId = candidate;
         newPool = pool.filter((_, i) => i !== idx);
         break;
       }
     }
-    if (!placed) return; // no tile in pool fits this door
+    if (!placed) return; // no tile in pool satisfies all door constraints
 
     const newTiles = [...gs.placed_tiles, placed];
     const newRemaining = { ...gs.remaining_tiles, [floor]: newPool };
@@ -2401,9 +2418,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 {/* Haunt move phase: let player voluntarily switch to action without exhausting all moves */}
                 {gs.phase === "haunt" && gs.turn_phase === "move" && (
                   <button
+                    disabled={!canAttack}
                     onClick={async () => { await updateGs({ turn_phase: "action" }); }}
                     className="flex-1 py-2 rounded-xl text-sm font-bold"
-                    style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                    style={{
+                      background: canAttack ? "rgba(239,68,68,0.08)" : "rgba(100,100,100,0.05)",
+                      border: `1px solid ${canAttack ? "rgba(239,68,68,0.25)" : "rgba(100,100,100,0.2)"}`,
+                      color: canAttack ? "#ef4444" : "#555",
+                      fontFamily: "var(--font-gothic)",
+                      cursor: canAttack ? "pointer" : "not-allowed",
+                      opacity: canAttack ? 1 : 0.5,
+                    }}>
                     ⚔ Take Action
                   </button>
                 )}
