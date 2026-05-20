@@ -349,15 +349,27 @@ function MansionMap({
     players.forEach((p, idx) => {
       const ps = gs.player_states[p.id];
       if (!ps) return;
-      // If this is the local player and we're animating, use animPos for display
-      const displayPos = (animPos && p.id === myPlayerId) ? animPos : ps;
-      if (displayPos.floor !== viewFloor) return;
-      const key = `${displayPos.x},${displayPos.y}`;
+      // While animating, hide the local player from tile grid — floating token shows them instead
+      if (animPos && p.id === myPlayerId) return;
+      if (ps.floor !== viewFloor) return;
+      const key = `${ps.x},${ps.y}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push({ player: p, index: idx, isDead: ps.is_dead ?? false });
     });
     return map;
   }, [players, gs.player_states, viewFloor, animPos, myPlayerId]);
+
+  // Pixel coords for the CSS-transitioned floating token
+  const animPixelPos = useMemo(() => {
+    if (!animPos || animPos.floor !== viewFloor) return null;
+    return {
+      left: (animPos.x - minX) * TILE_PX,
+      top:  (animPos.y - minY) * TILE_PX,
+    };
+  }, [animPos, viewFloor, minX, minY]);
+
+  const myPlayerObj  = players.find(p => p.id === myPlayerId);
+  const myPlayerIdx  = players.findIndex(p => p.id === myPlayerId);
 
   // Deck count per tile type (so players know how many cards remain)
   const deckCounts: Record<string, number> = {
@@ -506,6 +518,43 @@ function MansionMap({
               </div>
             );
           })}
+
+          {/* ── Floating player token — CSS transition handles smooth sliding ── */}
+          {animPixelPos && myPlayerObj && (
+            <div
+              style={{
+                position: "absolute",
+                left: animPixelPos.left,
+                top: animPixelPos.top,
+                width: TILE_PX,
+                height: TILE_PX,
+                transition: "left 240ms ease-in-out, top 240ms ease-in-out",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                pointerEvents: "none",
+                zIndex: 30,
+              }}
+            >
+              {/* Pulse ring */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full animate-ping"
+                  style={{ background: playerColor(myPlayerIdx), opacity: 0.35 }} />
+              </div>
+              {/* Token */}
+              <div className="relative w-8 h-8 rounded-full flex items-center justify-center font-black"
+                style={{
+                  background: playerColor(myPlayerIdx),
+                  fontSize: 13,
+                  color: "#fff",
+                  border: "2px solid #fbbf24",
+                  boxShadow: "0 0 12px rgba(251,191,36,0.9), 0 2px 8px rgba(0,0,0,0.9)",
+                  letterSpacing: 0,
+                }}>
+                {myPlayerObj.name[0].toUpperCase()}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1380,7 +1429,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
     const movesLeft = effectiveSpeed - newMovesUsed;
 
-    // Animate through each intermediate room before committing to DB
+    // ── CSS sliding animation ────────────────────────────────────────────────
+    // Strategy: place a floating token at the current tile first (gives CSS a
+    // start point), then step through each path node; the 240 ms CSS transition
+    // on left/top handles the smooth interpolation between every step.
     const path = findPath(
       gs.placed_tiles,
       myState.floor, myState.x, myState.y,
@@ -1389,15 +1441,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     );
     if (path && path.length > 0) {
       isAnimatingRef.current = true;
-      // Slide through intermediate steps (all except the last = destination)
-      for (const step of path.slice(0, -1)) {
+      // Pin floating token at origin so browser knows where to transition FROM
+      setAnimPos({ floor: myState.floor, x: myState.x, y: myState.y });
+      // Two rAFs guarantee the browser painted the token at origin before we move it
+      await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+      // Walk every step of the path (CSS slides each leg in 240 ms)
+      for (const step of path) {
         setAnimPos(step);
         playSfx("/audio/betrayal/sfx/footstep.mp3");
-        await new Promise<void>(res => setTimeout(res, 260));
+        await new Promise<void>(res => setTimeout(res, 250)); // 10 ms buffer after 240 ms transition
       }
-      // Hold animPos AT the destination — cleared by useEffect when myState catches up
-      // This prevents the snap-back flash that would occur if we cleared it here
-      setAnimPos({ floor, x, y });
+      // animPos stays at destination; useEffect clears it once myState catches up
     }
 
     // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
@@ -1423,7 +1477,6 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
     if (movesLeft <= 0) patch.turn_phase = "action";
 
-    playSfx("/audio/betrayal/sfx/footstep.mp3");
     await updateGs(patch);
 
     // Trigger card popup — tile is already marked drawn in the patch above
@@ -1517,6 +1570,16 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       ...gs.player_states,
       [myPlayerId!]: { ...myState, x, y, floor, drawn_tiles: newDrawnTiles },
     };
+
+    // Animate player stepping onto the newly revealed tile (always 1 step away)
+    if (!isAnimatingRef.current) {
+      isAnimatingRef.current = true;
+      setAnimPos({ floor: myState.floor, x: myState.x, y: myState.y });
+      await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+      setAnimPos({ floor, x, y });
+      playSfx("/audio/betrayal/sfx/footstep.mp3");
+      await new Promise<void>(res => setTimeout(res, 250));
+    }
 
     playSfx("/audio/betrayal/sfx/tile-reveal.mp3");
     await updateGs({
