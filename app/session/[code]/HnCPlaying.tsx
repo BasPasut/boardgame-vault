@@ -290,6 +290,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const { muted, toggleMute } = useAmbientAudio("/audio/hues-and-cues/bg_music.mp3");
 
+  const gs = dbSession.game_state;
+  const phase = dbSession.phase;
+
   // Phase countdown — 60 s per phase, resets on sub_phase change
   const PHASE_DURATION = 60;
   const [phaseSecsLeft, setPhaseSecsLeft] = useState(PHASE_DURATION);
@@ -312,9 +315,6 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [gs.sub_phase, phaseStartRef]);
-
-  const gs = dbSession.game_state;
-  const phase = dbSession.phase;
 
   const currentCueGiverId = gs.cue_giver_order[(gs.round - 1) % gs.cue_giver_order.length];
   const amICueGiver = myPlayerId === currentCueGiverId;
