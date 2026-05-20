@@ -685,7 +685,7 @@ function SessionRoom() {
         all_players: allPlayerIds,
         active_players: allPlayerIds,
         current_turn_index: 0,
-        turn_started_at: new Date().toISOString(),
+        turn_started_at: null, // first player clicks "start turn" themselves
         turn_duration_s: 8,
         words: [],
         scores: initialScores,

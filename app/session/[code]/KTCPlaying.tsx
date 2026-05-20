@@ -206,9 +206,9 @@ export default function KTCPlaying({
   const secsLeft = useTurnCountdown(gs.turn_started_at, gs.turn_duration_s);
   const challengeSecsLeft = useChallengeCountdown(gs.challenge?.discussion_end_at ?? null);
 
-  // Sync speech transcript → input
+  // Sync speech transcript → input (no turn gate — avoids stale-closure miss)
   useEffect(() => {
-    if (speech.transcript && isMyTurn && gs.phase === "playing") {
+    if (speech.transcript) {
       setWordInput(speech.transcript);
       speech.reset();
     }
@@ -220,10 +220,12 @@ export default function KTCPlaying({
   }, [gs.challenge?.challenger_id, gs.challenge?.challenged_player_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-timeout: when timer hits 0 and it's my turn, eliminate myself
+  // Guard: turn must be actively running (turn_started_at ≠ null)
   useEffect(() => {
     if (
       gs.phase === "playing" &&
       isMyTurn &&
+      gs.turn_started_at !== null &&
       secsLeft === 0 &&
       !submitting &&
       !timeoutFiredRef.current
@@ -232,7 +234,7 @@ export default function KTCPlaying({
       handleTimeout();
     }
     if (secsLeft > 0) timeoutFiredRef.current = false;
-  }, [secsLeft, isMyTurn, gs.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [secsLeft, isMyTurn, gs.phase, gs.turn_started_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── DB helpers ──────────────────────────────────────────────────────────────
 
@@ -326,7 +328,7 @@ export default function KTCPlaying({
           active_players: newActive,
           words: [], // reset sub-round
           current_turn_index: newTurnIdx,
-          turn_started_at: now(),
+          turn_started_at: null, // next player must manually start
           challenge: null,
           event_log: [...fresh.event_log, elimLog],
         },
@@ -388,12 +390,13 @@ export default function KTCPlaying({
 
     const nextIdx = (fresh.current_turn_index + 1) % fresh.active_players.length;
 
+    // Set turn_started_at to null — next player must manually start their turn
     await supabase.from("sessions").update({
       game_state: {
         ...fresh,
         words: [...fresh.words, newWord],
         current_turn_index: nextIdx,
-        turn_started_at: now(),
+        turn_started_at: null,
         event_log: [...fresh.event_log, wordLog],
       },
     }).eq("code", code);
@@ -428,6 +431,19 @@ export default function KTCPlaying({
     if (!currentId) return;
     await eliminatePlayer(fresh, currentId, "timeout");
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Current player: manually start their turn countdown
+  const handleStartTurn = useCallback(async () => {
+    if (!myPlayerId || !isMyTurn) return;
+    const fresh = await freshState();
+    if (!fresh || fresh.phase !== "playing") return;
+    const freshCurrentId = fresh.active_players[fresh.current_turn_index % fresh.active_players.length];
+    if (freshCurrentId !== myPlayerId) return;
+    if (fresh.turn_started_at !== null) return; // already started
+    await supabase.from("sessions").update({
+      game_state: { ...fresh, turn_started_at: now() },
+    }).eq("code", code);
+  }, [myPlayerId, isMyTurn, code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Any player: challenge the last word
   const handleChallenge = useCallback(async () => {
@@ -581,7 +597,7 @@ export default function KTCPlaying({
         current_round: nextRound,
         active_players: newActive,
         current_turn_index: 0,
-        turn_started_at: now(),
+        turn_started_at: null, // first player must manually start
         words: [],
         round_winner_id: null,
         challenge: null,
@@ -795,11 +811,12 @@ export default function KTCPlaying({
   // ── Playing phase ──
   const currentTurnName = playerName(players, currentTurnId);
   const lastWord = gs.words[gs.words.length - 1] ?? null;
-  const canChallenge =
-    myPlayerId !== null &&
-    gs.words.length > 0 &&
-    lastWord?.player_id !== myPlayerId &&
-    isActive;
+  // Challenge: visible to all active players when there are words.
+  // Disabled (not hidden) when the last word belongs to me — to make the button
+  // always discoverable.
+  const canShowChallenge = isActive && gs.words.length > 0 && myPlayerId !== null;
+  const canChallenge = canShowChallenge && lastWord?.player_id !== myPlayerId;
+  const turnPending = gs.turn_started_at === null; // waiting for manual start
 
   return (
     <div
@@ -968,19 +985,44 @@ export default function KTCPlaying({
       >
         {/* Turn indicator */}
         {gs.active_players.length > 1 ? (
-          <div className={`flex items-center justify-between${isMyTurn ? " ktc-turn-glow" : ""}`}>
-            <div>
+          <div className={`flex items-center justify-between${isMyTurn && !turnPending ? " ktc-turn-glow" : ""}`}>
+            <div className="flex-1 min-w-0 mr-3">
               {isMyTurn ? (
-                <p className="font-black text-lg" style={{ color: KTC.accent, fontFamily: "var(--font-gothic)" }}>
-                  ✨ ตาของคุณ!
-                </p>
+                turnPending ? (
+                  /* ── My turn but not started ── */
+                  <div>
+                    <p className="font-black text-base" style={{ color: KTC.accent, fontFamily: "var(--font-gothic)" }}>
+                      ✨ ตาของคุณ!
+                    </p>
+                    <p className="text-xs" style={{ color: KTC.textMuted }}>
+                      พูดคำของคุณก่อน แล้วกดเริ่ม
+                    </p>
+                  </div>
+                ) : (
+                  <p className="font-black text-lg" style={{ color: KTC.accent, fontFamily: "var(--font-gothic)" }}>
+                    ✨ ตาของคุณ — พิมพ์หรือพูดคำ!
+                  </p>
+                )
               ) : (
-                <p className="text-sm" style={{ color: KTC.textSec }}>
-                  ตาของ <span style={{ color: KTC.textPrim }}>{currentTurnName}</span>
-                </p>
+                <div>
+                  <p className="text-sm" style={{ color: KTC.textSec }}>
+                    ตาของ <span style={{ color: KTC.textPrim }}>{currentTurnName}</span>
+                  </p>
+                  {turnPending && (
+                    <p className="text-xs" style={{ color: KTC.textMuted }}>รอ {currentTurnName} กดเริ่ม...</p>
+                  )}
+                </div>
               )}
             </div>
-            <TimerRing secsLeft={secsLeft} total={gs.turn_duration_s} />
+            {turnPending ? (
+              /* Paused state — full time shown */
+              <div className="flex items-center gap-2">
+                <span className="text-2xl" style={{ opacity: 0.4 }}>⏸</span>
+                <span className="text-sm font-bold" style={{ color: KTC.textMuted }}>{gs.turn_duration_s}s</span>
+              </div>
+            ) : (
+              <TimerRing secsLeft={secsLeft} total={gs.turn_duration_s} />
+            )}
           </div>
         ) : (
           <p className="text-sm text-center" style={{ color: KTC.textSec }}>
@@ -988,8 +1030,25 @@ export default function KTCPlaying({
           </p>
         )}
 
-        {/* Input area — only for active player on their turn */}
-        {isMyTurn && isActive && (
+        {/* Start turn button — only for current player when timer hasn't started */}
+        {isMyTurn && isActive && turnPending && (
+          <button
+            onClick={handleStartTurn}
+            className="w-full py-4 rounded-xl font-black text-xl transition-all"
+            style={{
+              background: "rgba(245,158,11,0.2)",
+              border: `2px solid ${KTC.accent}`,
+              color: KTC.accent,
+              fontFamily: "var(--font-gothic)",
+              boxShadow: KTC.glowActive,
+            }}
+          >
+            ▶ เริ่มตาของฉัน
+          </button>
+        )}
+
+        {/* Input area — only for active player on their turn AND timer is running */}
+        {isMyTurn && isActive && !turnPending && (
           <div className="space-y-2">
             {submitError && (
               <div
@@ -1069,18 +1128,25 @@ export default function KTCPlaying({
           </div>
         )}
 
-        {/* Challenge button */}
-        {canChallenge && gs.phase === "playing" && (
+        {/* Challenge button — always visible to active players when words exist */}
+        {canShowChallenge && gs.phase === "playing" && (
           <button
-            onClick={handleChallenge}
-            className="w-full py-3 rounded-xl font-bold text-sm transition-all"
+            onClick={canChallenge ? handleChallenge : undefined}
+            disabled={!canChallenge}
+            className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
             style={{
-              background: "rgba(168,85,247,0.1)",
-              border: "1.5px solid rgba(168,85,247,0.4)",
+              background: canChallenge ? "rgba(168,85,247,0.15)" : "rgba(168,85,247,0.05)",
+              border: `1.5px solid ${canChallenge ? "rgba(168,85,247,0.5)" : "rgba(168,85,247,0.2)"}`,
               color: "#a855f7",
+              cursor: canChallenge ? "pointer" : "not-allowed",
             }}
+            title={!canChallenge ? "ท้าทายคำของตัวเองไม่ได้" : undefined}
           >
-            🚨 Challenge คำล่าสุด: &ldquo;{lastWord?.word}&rdquo;
+            🚨 Challenge คำล่าสุด:{" "}
+            <span style={{ fontFamily: "var(--font-gothic)" }}>&ldquo;{lastWord?.word}&rdquo;</span>
+            {!canChallenge && (
+              <span className="ml-1 text-xs font-normal" style={{ color: "#7a5a90" }}>(คำของคุณ)</span>
+            )}
           </button>
         )}
 
