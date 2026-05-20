@@ -1279,6 +1279,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
   const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
   const [animPos, setAnimPos] = useState<{ floor: Floor; x: number; y: number } | null>(null);
+  const isAnimatingRef = useRef(false);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string; diceCount?: number } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
@@ -1290,6 +1291,15 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [showHauntGuide, setShowHauntGuide] = useState(false);
   const [showEventLog, setShowEventLog] = useState(false);
   const [showDeathPopup, setShowDeathPopup] = useState(false);
+
+  // Clear animPos once the DB confirms the player reached the animated destination
+  useEffect(() => {
+    if (!animPos || !myState) return;
+    if (myState.floor === animPos.floor && myState.x === animPos.x && myState.y === animPos.y) {
+      setAnimPos(null);
+      isAnimatingRef.current = false;
+    }
+  }, [myState?.floor, myState?.x, myState?.y, animPos]);
 
   // Show death popup when my character dies
   const prevIsDead = useRef(false);
@@ -1357,6 +1367,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const handleMove = useCallback(async (x: number, y: number, floor: Floor) => {
     if (!isMyTurn || !myState || gs.turn_phase !== "move") return;
     if (x === myState.x && y === myState.y && floor === myState.floor) return;
+    if (isAnimatingRef.current) return; // block clicks during animation
 
     const tile = tileAt(gs.placed_tiles, floor, x, y);
     if (!tile) return;
@@ -1376,14 +1387,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       floor, x, y,
       gs.locked_doors ?? [],
     );
-    if (path && path.length > 1) {
-      // Slide through each intermediate step (skip last — that's the final destination)
+    if (path && path.length > 0) {
+      isAnimatingRef.current = true;
+      // Slide through intermediate steps (all except the last = destination)
       for (const step of path.slice(0, -1)) {
         setAnimPos(step);
         playSfx("/audio/betrayal/sfx/footstep.mp3");
-        await new Promise<void>(res => setTimeout(res, 280));
+        await new Promise<void>(res => setTimeout(res, 260));
       }
-      setAnimPos(null);
+      // Hold animPos AT the destination — cleared by useEffect when myState catches up
+      // This prevents the snap-back flash that would occur if we cleared it here
+      setAnimPos({ floor, x, y });
     }
 
     // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
