@@ -92,22 +92,45 @@ function rollD6(n: number): number {
 }
 
 // ─── Stat Bar ─────────────────────────────────────────────────────────────────
-function StatBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+function StatBar({ label, value, max, color, flash }: { label: string; value: number; max: number; color: string; flash?: { delta: number } }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 relative">
       <span className="text-xs w-16 flex-shrink-0" style={{ color: "#7a6a5a" }}>{label}</span>
       <div className="flex gap-0.5">
         {Array.from({ length: max }, (_, i) => (
           <div key={i} className="w-3 h-3 rounded-sm" style={{
             background: i < value ? color : "rgba(255,255,255,0.06)",
             border: "1px solid rgba(255,255,255,0.08)",
+            transition: "background 0.3s ease",
           }} />
         ))}
       </div>
       <span className="text-xs" style={{ color }}>{value}</span>
+      {flash && (
+        <span
+          key={flash.delta}
+          className="absolute right-0 text-xs font-black pointer-events-none"
+          style={{
+            color: flash.delta > 0 ? "#4ade80" : "#f87171",
+            animation: "statFloat 1.6s ease-out forwards",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {flash.delta > 0 ? `+${flash.delta}` : flash.delta}
+        </span>
+      )}
     </div>
   );
 }
+
+// ─── Stat Flash CSS (injected once) ──────────────────────────────────────────
+const STAT_FLASH_STYLE = `
+@keyframes statFloat {
+  0%   { opacity: 1; transform: translateY(0) scale(1.2); }
+  40%  { opacity: 1; transform: translateY(-10px) scale(1); }
+  100% { opacity: 0; transform: translateY(-22px) scale(0.85); }
+}
+`;
 
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
 function MapTile({
@@ -209,6 +232,16 @@ function MapTile({
               ✝
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Monster token — image in bottom-right corner */}
+      {hasMonster && monstersHere && monstersHere[0]?.image && (
+        <div className="absolute bottom-4 right-1 z-10" style={{ width: 22, height: 22 }}>
+          <div className="relative w-full h-full rounded-full overflow-hidden"
+            style={{ border: "1.5px solid #ef4444", boxShadow: "0 0 8px rgba(239,68,68,0.8)" }}>
+            <NextImage src={monstersHere[0].image} alt={monstersHere[0].name} fill sizes="22px" className="object-cover" />
+          </div>
         </div>
       )}
 
@@ -1359,6 +1392,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
   const [discoveryChoice, setDiscoveryChoice] = useState<[string, string] | null>(null);
   const [smellingSaltsTarget, setSmellingSaltsTarget] = useState<string[] | null>(null);
+  const [confirmWinnerRole, setConfirmWinnerRole] = useState<"heroes" | "traitor" | null>(null);
+  const [statFlashes, setStatFlashes] = useState<Record<string, { delta: number; key: number }>>({});
+  const prevStatsRef = useRef<{ speed: number; might: number; sanity: number; knowledge: number } | null>(null);
   const [showBotLog, setShowBotLog] = useState(false);
   const [showHauntGuide, setShowHauntGuide] = useState(false);
   const [showEventLog, setShowEventLog] = useState(false);
@@ -1380,6 +1416,32 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     if (nowDead && !prevIsDead.current) setShowDeathPopup(true);
     prevIsDead.current = nowDead;
   }, [myState?.is_dead]);
+
+  // Detect stat changes → drive StatBar flash animation
+  useEffect(() => {
+    if (!myState) return;
+    const prev = prevStatsRef.current;
+    if (prev) {
+      const STATS = ["speed", "might", "sanity", "knowledge"] as const;
+      const newFlashes: Record<string, { delta: number; key: number }> = {};
+      for (const stat of STATS) {
+        const delta = myState[stat] - prev[stat];
+        if (delta !== 0) newFlashes[stat] = { delta, key: Date.now() };
+      }
+      if (Object.keys(newFlashes).length > 0) {
+        setStatFlashes(newFlashes);
+        setTimeout(() => setStatFlashes({}), 1800);
+      }
+    }
+    prevStatsRef.current = { speed: myState.speed, might: myState.might, sanity: myState.sanity, knowledge: myState.knowledge };
+  }, [myState?.speed, myState?.might, myState?.sanity, myState?.knowledge]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-open haunt guide when haunt begins
+  const prevPhaseRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (gs.phase === "haunt" && prevPhaseRef.current !== "haunt") setShowHauntGuide(true);
+    prevPhaseRef.current = gs.phase;
+  }, [gs.phase]);
 
   // Bot engine — runs silently on host's browser, auto-plays bot turns
   const { botLog, isBotTurn } = useBotEngine({ isHost, gs, players, code });
@@ -2477,6 +2539,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden" style={{ background: "#0a0708" }}>
+      {/* Inject stat-flash keyframes once */}
+      <style>{STAT_FLASH_STYLE}</style>
+
       {/* Haunt reveal overlay */}
       {showHauntReveal && gs.haunt_objectives && (
         <HauntReveal
@@ -2537,6 +2602,46 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
       {/* Combat result overlay */}
       {combatResult && <CombatOverlay result={combatResult} onDismiss={() => setCombatResult(null)} />}
+
+      {/* Win confirmation modal */}
+      {confirmWinnerRole && (() => {
+        const scenario = getHaunt(gs.haunt_number ?? -1);
+        const isTraitor = confirmWinnerRole === "traitor";
+        const accent = isTraitor ? "#ef4444" : "#22c55e";
+        const winObj  = isTraitor ? scenario?.traitorObjective : scenario?.heroObjective;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.88)" }}>
+            <div className="max-w-sm w-full rounded-2xl p-6 space-y-4" style={{ background: "rgba(8,5,12,0.99)", border: `1px solid ${accent}50` }}>
+              <h2 className="text-xl font-black text-center" style={{ color: accent, fontFamily: "var(--font-gothic)" }}>
+                {isTraitor ? "⚔ Declare Traitor Victory?" : "🕯 Declare Heroes Win?"}
+              </h2>
+              {scenario && (
+                <div className="rounded-xl p-3 text-xs space-y-1" style={{ background: `${accent}0d`, border: `1px solid ${accent}30` }}>
+                  <p className="font-bold uppercase tracking-widest" style={{ color: accent, fontSize: 9 }}>Haunt #{gs.haunt_number} — {scenario.name}</p>
+                  <p style={{ color: "#c8b89a" }}>{winObj}</p>
+                </div>
+              )}
+              <p className="text-xs text-center" style={{ color: "#7a6a5a" }}>
+                {lang === "th"
+                  ? "ทุกคนเห็นด้วยว่าเงื่อนไขชนะสำเร็จแล้วหรือไม่?"
+                  : "Has everyone agreed the win condition has been met?"}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setConfirmWinnerRole(null)}
+                  className="py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(90,74,58,0.2)", border: "1px solid rgba(90,74,58,0.4)", color: "#7a6a5a" }}>
+                  {lang === "th" ? "ยังไม่ถึงเวลา" : "Not yet"}
+                </button>
+                <button onClick={() => { handleDeclareWinner(confirmWinnerRole); setConfirmWinnerRole(null); }}
+                  className="py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: `${accent}22`, border: `1px solid ${accent}60`, color: accent, fontFamily: "var(--font-gothic)" }}>
+                  {lang === "th" ? "ยืนยัน!" : "Confirm!"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Discovery choice overlay — pick 1 item to keep, the other returns to deck */}
       {discoveryChoice && (
@@ -2778,7 +2883,20 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   <span style={{ color: accent, fontSize: 10 }}>{showHauntGuide ? "▲" : "▼"}</span>
                 </button>
                 {showHauntGuide && <div className="px-3 pb-3 space-y-2" style={{ background: bg }}>
-                <p style={{ color: "#c8b89a" }}><span className="font-bold">Goal: </span>{objective}</p>
+                {/* Show MY objective prominently */}
+                <div className="rounded-lg p-2" style={{ background: `${accent}12`, border: `1px solid ${accent}30` }}>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: accent, fontSize: 9 }}>
+                    {isTraitor ? "⚔ Your Goal (Traitor)" : "🕯 Your Goal (Heroes)"}
+                  </p>
+                  <p style={{ color: "#c8b89a" }}>{objective}</p>
+                </div>
+                {/* Show OTHER side's objective so everyone understands the game */}
+                <div className="rounded-lg p-2" style={{ background: "rgba(90,74,58,0.12)", border: "1px solid rgba(90,74,58,0.2)" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "#7a6a5a", fontSize: 9 }}>
+                    {isTraitor ? "🕯 Heroes' Goal" : "⚔ Traitor's Goal"}
+                  </p>
+                  <p style={{ color: "#5a4a3a" }}>{isTraitor ? scenario.heroObjective : scenario.traitorObjective}</p>
+                </div>
                 {powers && powers.length > 0 && (
                   <ul className="space-y-1 pl-2">
                     {powers.map((p, i) => (
@@ -2817,6 +2935,45 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             );
           })()}
 
+          {/* Monster tracker — always visible during haunt so players know where it is */}
+          {gs.phase === "haunt" && (gs.monsters ?? []).length > 0 && (() => {
+            const FLOOR_LABEL = { 0: "Basement", 1: "Ground Floor", 2: "Upper Floor" };
+            return (
+              <div className="flex-shrink-0 rounded-xl p-2.5 space-y-1.5" style={{ background: "rgba(127,29,29,0.18)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)", fontSize: 9 }}>
+                  ☠ Monster Location
+                </p>
+                {gs.monsters.map((m, i) => {
+                  const onMyFloor = myState ? m.floor === myState.floor : false;
+                  const nearestHero = (() => {
+                    let best: string | null = null, bestDist = Infinity;
+                    for (const [pid, ps] of Object.entries(gs.player_states)) {
+                      if (ps.is_dead || ps.is_traitor) continue;
+                      const d = Math.abs(ps.x - m.x) + Math.abs(ps.y - m.y) + (ps.floor !== m.floor ? 10 : 0);
+                      if (d < bestDist) { bestDist = d; best = pid; }
+                    }
+                    return best ? players.find(p => p.id === best)?.name ?? "?" : null;
+                  })();
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0"
+                        style={{ border: "1.5px solid #ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)" }}>
+                        <NextImage src={m.image} alt={m.name} fill sizes="28px" className="object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold leading-none" style={{ color: "#fca5a5" }}>{m.name}</p>
+                        <p className="text-xs leading-snug" style={{ color: onMyFloor ? "#ef4444" : "#7a6a5a" }}>
+                          {FLOOR_LABEL[m.floor as 0|1|2]}{onMyFloor ? " 👁 (your floor)" : ""}
+                        </p>
+                        {nearestHero && <p className="text-xs" style={{ color: "#5a4a3a" }}>Hunting: {nearestHero}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Phase indicator */}
           <div className="flex-shrink-0 flex items-center justify-between">
             <span className="text-xs tracking-widest uppercase" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
@@ -2831,17 +2988,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             </span>
           </div>
 
-          {/* Victory declaration — visible to any player during haunt (not just on turn) */}
+          {/* Victory declaration — visible to any player during haunt */}
           {gs.phase === "haunt" && myState && (
             <div className="flex-shrink-0 flex gap-2">
               {myState.is_traitor ? (
-                <button onClick={() => handleDeclareWinner("traitor")}
+                <button onClick={() => setConfirmWinnerRole("traitor")}
                   className="flex-1 py-2 rounded-xl text-sm font-bold"
                   style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                   ⚔ Declare Traitor Victory
                 </button>
               ) : (
-                <button onClick={() => handleDeclareWinner("heroes")}
+                <button onClick={() => setConfirmWinnerRole("heroes")}
                   className="flex-1 py-2 rounded-xl text-sm font-bold"
                   style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
                   🕯 Declare Heroes Win
@@ -3108,10 +3265,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 )}
               </div>
               <div className="space-y-1">
-                <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={STAT_COLOR.speed} />
-                <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={STAT_COLOR.might} />
-                <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={STAT_COLOR.sanity} />
-                <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={STAT_COLOR.knowledge} />
+                <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={STAT_COLOR.speed}      flash={statFlashes.speed} />
+                <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={STAT_COLOR.might}      flash={statFlashes.might} />
+                <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={STAT_COLOR.sanity}     flash={statFlashes.sanity} />
+                <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={STAT_COLOR.knowledge}  flash={statFlashes.knowledge} />
               </div>
               {myState.items.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
