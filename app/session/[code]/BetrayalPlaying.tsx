@@ -2554,6 +2554,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     : null;
 
   const showHauntReveal = gs.phase === "haunt" && !hauntDismissed && gs.haunt_number != null;
+  const isHaunt = gs.phase === "haunt";
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden" style={{ background: "#050308" }}>
