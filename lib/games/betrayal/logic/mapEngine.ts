@@ -177,6 +177,76 @@ export function buildPlacedTile(
   };
 }
 
+/**
+ * BFS shortest path from (floor,x,y) to (tf,tx,ty).
+ * Returns array of {floor,x,y} positions from start (exclusive) to end (inclusive),
+ * or null if unreachable.
+ */
+export function findPath(
+  tiles: PlacedTile[],
+  floor: Floor, x: number, y: number,
+  tf: Floor, tx: number, ty: number,
+  lockedDoors: string[] = [],
+): { floor: Floor; x: number; y: number }[] | null {
+  const lockedSet = new Set(lockedDoors);
+  function isLocked(f: Floor, cx: number, cy: number, dir: Direction): boolean {
+    return lockedSet.has(`${f},${cx},${cy},${dir}`) ||
+           lockedSet.has(`${f},${cx + DELTA[dir].dx},${cy + DELTA[dir].dy},${OPPOSITE[dir]}`);
+  }
+
+  type Node = { floor: Floor; x: number; y: number };
+  const startKey = `${floor},${x},${y}`;
+  const endKey   = `${tf},${tx},${ty}`;
+  const parent = new Map<string, string | null>();
+  parent.set(startKey, null);
+  const queue: Node[] = [{ floor, x, y }];
+
+  outer: while (queue.length) {
+    const cur = queue.shift()!;
+    const curKey = `${cur.floor},${cur.x},${cur.y}`;
+    if (curKey === endKey) break;
+
+    const curTile = tileAt(tiles, cur.floor, cur.x, cur.y);
+    if (!curTile) continue;
+
+    const def = getTile(curTile.tile_id);
+    if (def?.type === "stairwell") {
+      for (const f of [0, 1, 2] as Floor[]) {
+        if (f === cur.floor) continue;
+        const stairwells = tiles.filter((t) => t.floor === f && getTile(t.tile_id)?.type === "stairwell");
+        for (const sw of stairwells) {
+          const k = `${f},${sw.x},${sw.y}`;
+          if (!parent.has(k)) { parent.set(k, curKey); queue.push({ floor: f, x: sw.x, y: sw.y }); }
+          if (k === endKey) break outer;
+        }
+      }
+    }
+
+    for (const dir of ["north", "east", "south", "west"] as Direction[]) {
+      if (!curTile.doors[dir]) continue;
+      if (isLocked(cur.floor, cur.x, cur.y, dir)) continue;
+      const { dx, dy } = DELTA[dir];
+      const nx = cur.x + dx, ny = cur.y + dy;
+      const neighbor = tileAt(tiles, cur.floor, nx, ny);
+      if (!neighbor || !neighbor.doors[OPPOSITE[dir]]) continue;
+      const k = `${cur.floor},${nx},${ny}`;
+      if (!parent.has(k)) { parent.set(k, curKey); queue.push({ floor: cur.floor, x: nx, y: ny }); }
+      if (k === endKey) break outer;
+    }
+  }
+
+  if (!parent.has(endKey)) return null;
+
+  const path: Node[] = [];
+  let cur: string | null | undefined = endKey;
+  while (cur && cur !== startKey) {
+    const [f, px, py] = cur.split(",").map(Number);
+    path.unshift({ floor: f as Floor, x: px, y: py });
+    cur = parent.get(cur);
+  }
+  return path;
+}
+
 /** Starting tiles for each floor */
 export function buildStartingTiles(): PlacedTile[] {
   const ground = buildPlacedTile("entrance-hall",    1, 0, 0, "south", "system")!;

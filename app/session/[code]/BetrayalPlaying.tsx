@@ -6,14 +6,14 @@ import NextImage from "next/image";
 import { supabase } from "@/lib/supabase";
 import { getLang, saveLang } from "@/lib/utils/lang";
 import { useAmbientAudio, useSfx } from "@/lib/hooks/useAmbientAudio";
-import type { BetrayalGameState, PlacedTile, Floor, PlayerGameState } from "@/lib/games/betrayal/types";
+import type { BetrayalGameState, PlacedTile, Floor, PlayerGameState, MonsterState } from "@/lib/games/betrayal/types";
 import { TILE_DEFINITIONS, getTile, buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
 import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/games/betrayal/data/cards";
 import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
   getReachable, getUnexploredDoors,
-  buildStartingTiles, tileAt, findValidRotationMulti,
+  buildStartingTiles, tileAt, findValidRotationMulti, findPath,
 } from "@/lib/games/betrayal/logic/mapEngine";
 import type { Player } from "@/types/game";
 import { useBotEngine } from "@/lib/games/betrayal/botEngine";
@@ -97,7 +97,7 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
 function MapTile({
   tile, playersHere, isReachable, isMyPosition, onClick, isNew,
-  myPlayerId, currentPlayerId, deckCount,
+  myPlayerId, currentPlayerId, deckCount, monstersHere,
 }: {
   tile: PlacedTile;
   playersHere: { player: Player; index: number; isDead?: boolean }[];
@@ -108,6 +108,7 @@ function MapTile({
   myPlayerId: string | null;
   currentPlayerId: string | null;
   deckCount?: number;
+  monstersHere?: MonsterState[];
 }) {
   const def = getTile(tile.tile_id);
   const typeColor = {
@@ -228,6 +229,17 @@ function MapTile({
         </div>
       )}
 
+      {/* Monster tokens — top-right area, pulsing red */}
+      {(monstersHere ?? []).map((m, i) => (
+        <div key={i} className="absolute" style={{ top: 4, right: i * 16 + 4, zIndex: 10 }}>
+          <div className="animate-ping absolute inset-0 rounded-full" style={{ background: "rgba(220,38,38,0.5)" }} />
+          <div className="relative w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+            style={{ background: "#991b1b", border: "2px solid #ef4444", color: "#fca5a5", fontSize: 12, boxShadow: "0 0 8px rgba(239,68,68,0.8)" }}>
+            ☠
+          </div>
+        </div>
+      ))}
+
       {/* Overlay label */}
       <div className="absolute bottom-0 left-0 right-0 text-center px-0.5 py-0.5 leading-tight truncate"
         style={{ background: "rgba(0,0,0,0.72)", color: "#e8d5b0", fontSize: 9, fontFamily: "var(--font-gothic)" }}>
@@ -258,7 +270,7 @@ function UnexploredDoor({ onClick, canExplore }: { onClick: () => void; canExplo
 
 // ─── Mansion Map ──────────────────────────────────────────────────────────────
 function MansionMap({
-  gs, players, myPlayerId, myState, isMyTurn, onMove, onRevealTile,
+  gs, players, myPlayerId, myState, isMyTurn, onMove, onRevealTile, animPos,
 }: {
   gs: BetrayalGameState;
   players: Player[];
@@ -267,6 +279,7 @@ function MansionMap({
   isMyTurn: boolean;
   onMove: (x: number, y: number, floor: Floor) => void;
   onRevealTile: (x: number, y: number, floor: Floor) => void;
+  animPos?: { floor: Floor; x: number; y: number } | null;
 }) {
   const [viewFloor, setViewFloor] = useState<Floor>(myState?.floor ?? 1);
   const [newTileKey, setNewTileKey] = useState<string>("");
@@ -341,13 +354,16 @@ function MansionMap({
     const map = new Map<string, { player: Player; index: number; isDead: boolean }[]>();
     players.forEach((p, idx) => {
       const ps = gs.player_states[p.id];
-      if (!ps || ps.floor !== viewFloor) return;
-      const key = `${ps.x},${ps.y}`;
+      if (!ps) return;
+      // If this is the local player and we're animating, use animPos for display
+      const displayPos = (animPos && p.id === myPlayerId) ? animPos : ps;
+      if (displayPos.floor !== viewFloor) return;
+      const key = `${displayPos.x},${displayPos.y}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push({ player: p, index: idx, isDead: ps.is_dead ?? false });
     });
     return map;
-  }, [players, gs.player_states, viewFloor]);
+  }, [players, gs.player_states, viewFloor, animPos, myPlayerId]);
 
   // Deck count per tile type (so players know how many cards remain)
   const deckCounts: Record<string, number> = {
@@ -355,6 +371,17 @@ function MansionMap({
     omen: gs.omen_deck.length,
     event: gs.event_deck.length,
   };
+
+  // Monsters on this floor, keyed by "x,y"
+  const monstersByTile = useMemo(() => {
+    const map = new Map<string, MonsterState[]>();
+    (gs.monsters ?? []).filter(m => m.floor === viewFloor).forEach(m => {
+      const key = `${m.x},${m.y}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    });
+    return map;
+  }, [gs.monsters, viewFloor]);
 
   return (
     <div className="flex flex-col gap-2 flex-1 min-h-0">
@@ -424,7 +451,8 @@ function MansionMap({
             const px = (tile.x - minX) * TILE_PX;
             const py = (tile.y - minY) * TILE_PX;
             const key = `${viewFloor},${tile.x},${tile.y}`;
-            const isMyPos = myState?.floor === viewFloor && myState.x === tile.x && myState.y === tile.y;
+            const myDisplayPos = animPos ?? myState;
+            const isMyPos = myDisplayPos?.floor === viewFloor && myDisplayPos.x === tile.x && myDisplayPos.y === tile.y;
             const tileDef = getTile(tile.tile_id);
             const dc = tileDef?.type && tileDef.type !== "normal" && tileDef.type !== "stairwell"
               ? deckCounts[tileDef.type]
@@ -440,6 +468,7 @@ function MansionMap({
                   myPlayerId={myPlayerId}
                   currentPlayerId={currentPlayerId}
                   deckCount={dc}
+                  monstersHere={monstersByTile.get(`${tile.x},${tile.y}`)}
                   onClick={() => {
                     if (reachable.has(key)) onMove(tile.x, tile.y, viewFloor);
                   }}
@@ -1255,6 +1284,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
   const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
+  const [animPos, setAnimPos] = useState<{ floor: Floor; x: number; y: number } | null>(null);
   const [diceResult, setDiceResult] = useState<{ values: number[]; label: string; diceCount?: number } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
@@ -1344,6 +1374,23 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
     const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
     const movesLeft = effectiveSpeed - newMovesUsed;
+
+    // Animate through each intermediate room before committing to DB
+    const path = findPath(
+      gs.placed_tiles,
+      myState.floor, myState.x, myState.y,
+      floor, x, y,
+      gs.locked_doors ?? [],
+    );
+    if (path && path.length > 1) {
+      // Slide through each intermediate step (skip last — that's the final destination)
+      for (const step of path.slice(0, -1)) {
+        setAnimPos(step);
+        playSfx("/audio/betrayal/sfx/footstep.mp3");
+        await new Promise<void>(res => setTimeout(res, 280));
+      }
+      setAnimPos(null);
+    }
 
     // Check card tile BEFORE the patch so we can mark drawn_tiles atomically with the move
     const tileKey = `${floor},${x},${y}`;
@@ -1671,6 +1718,16 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         const priority = neededIds.filter(id => baseDeck.includes(id));
         const guaranteedDeck = priority.length > 0 ? [...priority, ...baseDeck.filter(id => !priority.includes(id))] : baseDeck;
 
+        // Spawn one monster in the basement (basement landing)
+        const basementLanding = gs.placed_tiles.find(t => t.floor === 0 && t.tile_id === "basement-landing");
+        const spawnFloor: Floor = basementLanding ? 0 : myState.floor;
+        const spawnX = basementLanding ? basementLanding.x : myState.x;
+        const spawnY = basementLanding ? basementLanding.y : myState.y;
+        const spawnedMonster: MonsterState = {
+          floor: spawnFloor, x: spawnX, y: spawnY,
+          name: "The Creature", image: "/images/games/betrayal/monster.png",
+        };
+
         patch = {
           ...patch,
           phase: "haunt",
@@ -1679,7 +1736,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           player_states: newPlayerStates,
           item_deck: guaranteedDeck,
           haunt_objectives: { traitor: haunt.traitorObjective, heroes: haunt.heroObjective },
-          event_log: [...newLog, addLog("haunt", `The Haunt begins! "${haunt.name}"`)].slice(-30),
+          monsters: [spawnedMonster],
+          event_log: [...newLog, addLog("haunt", `The Haunt begins! "${haunt.name}" — a creature stirs in the basement...`)].slice(-30),
         };
       } else {
         playSfx("/audio/betrayal/sfx/dice-roll.mp3");
@@ -2055,13 +2113,74 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     // Clear restraint for the player ending their turn (restraint lasts 1 turn)
     const currentId = gs.turn_order[gs.current_turn_index];
     const newRestrained = (gs.restrained_players ?? []).filter(id => id !== currentId);
+
+    // Monster movement + damage (host-only, haunt phase)
+    let newMonsters = gs.monsters ?? [];
+    let newPlayerStates = { ...gs.player_states };
+    const monsterLog: typeof gs.event_log = [];
+
+    if (isHost && gs.phase === "haunt" && newMonsters.length > 0) {
+      const heroes = gs.turn_order.filter(id => {
+        const ps = gs.player_states[id];
+        return ps && !ps.is_dead && !ps.is_traitor;
+      });
+
+      newMonsters = newMonsters.map(monster => {
+        // Find nearest living hero (Manhattan distance as heuristic)
+        let nearest: { id: string; ps: PlayerGameState } | null = null;
+        let nearestDist = Infinity;
+        for (const hid of heroes) {
+          const ps = gs.player_states[hid];
+          if (!ps) continue;
+          const dist = Math.abs(ps.x - monster.x) + Math.abs(ps.y - monster.y) + (ps.floor !== monster.floor ? 10 : 0);
+          if (dist < nearestDist) { nearestDist = dist; nearest = { id: hid, ps }; }
+        }
+        if (!nearest) return monster;
+
+        // BFS one step toward nearest hero
+        const path = findPath(
+          gs.placed_tiles,
+          monster.floor, monster.x, monster.y,
+          nearest.ps.floor, nearest.ps.x, nearest.ps.y,
+          gs.locked_doors ?? [],
+        );
+        if (!path || path.length === 0) return monster;
+        const next = path[0]; // one step
+        return { ...monster, floor: next.floor, x: next.x, y: next.y };
+      });
+
+      // Deal damage to heroes sharing a tile with the monster
+      for (const monster of newMonsters) {
+        for (const hid of heroes) {
+          const ps = newPlayerStates[hid];
+          if (!ps || ps.is_dead) continue;
+          if (ps.floor === monster.floor && ps.x === monster.x && ps.y === monster.y) {
+            const char = getCharacter(ps.character_id);
+            const dmg = 1;
+            const newMight = Math.max(0, ps.might - dmg);
+            newPlayerStates[hid] = { ...ps, might: newMight };
+            const heroName = players.find(p => p.id === hid)?.name ?? "?";
+            monsterLog.push(addLog("stat", `☠ ${monster.name} attacks ${heroName}! -${dmg} Might (now ${newMight}/${char?.mightMax ?? "?"})`));
+            // Check death
+            if (newMight <= 0) {
+              newPlayerStates[hid] = { ...newPlayerStates[hid], is_dead: true };
+              monsterLog.push(addLog("death", `${heroName} was killed by the creature!`));
+            }
+          }
+        }
+      }
+    }
+
+    const newLog = [...gs.event_log, ...monsterLog].slice(-30);
     await updateGs({
       current_turn_index: nextIndex,
       turn_phase: "move",
       moves_used: 0,
       restrained_players: newRestrained,
+      monsters: newMonsters,
+      ...(monsterLog.length > 0 ? { player_states: newPlayerStates, event_log: newLog } : {}),
     });
-  }, [isMyTurn, gs, updateGs]);
+  }, [isMyTurn, isHost, gs, players, updateGs, addLog]);
 
   // ── Use item (consumables) ────────────────────────────────────────────────
   const handleUseItem = useCallback(async (itemId: string) => {
@@ -2248,6 +2367,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             gs={gs} players={players} myPlayerId={myPlayerId}
             myState={myState} isMyTurn={isMyTurn}
             onMove={handleMove} onRevealTile={handleRevealTile}
+            animPos={animPos}
           />
         </div>
 

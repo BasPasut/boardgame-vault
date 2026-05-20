@@ -94,6 +94,14 @@ export interface GameEvent {
   message: string;
 }
 
+export interface MonsterState {
+  floor: Floor;
+  x: number;
+  y: number;
+  name: string;
+  image: string;
+}
+
 export interface BetrayalGameState {
   phase: GamePhase;
   haunt_number: number | null;
@@ -128,4 +136,5 @@ export interface BetrayalGameState {
   pending_card: { type: CardType; card_id: string } | null;
   // tiles (floor,x,y keys) from which the current player already drew a card this turn
   turn_drawn_tiles: string[];
+  monsters: MonsterState[];
 }
