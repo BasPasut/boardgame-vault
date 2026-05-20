@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/BasPasut/Desktop/Projects/boardgame-vault/**)",
+      "Bash(sed -n '1748,1830p' app/session/[code]/BetrayalPlaying.tsx)"
+    ]
+  }
+}

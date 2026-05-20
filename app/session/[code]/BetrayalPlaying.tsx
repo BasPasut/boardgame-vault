@@ -13,7 +13,7 @@ import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/gam
 import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
   getReachable, getUnexploredDoors,
-  buildStartingTiles, tileAt, findValidRotationMulti, findPath,
+  buildStartingTiles, buildPlacedTile, tileAt, findValidRotationMulti, findPath,
 } from "@/lib/games/betrayal/logic/mapEngine";
 import type { Player } from "@/types/game";
 import { useBotEngine } from "@/lib/games/betrayal/botEngine";
@@ -52,6 +52,21 @@ const PLAYER_COLORS = [
 ];
 
 function playerColor(index: number) { return PLAYER_COLORS[index % PLAYER_COLORS.length]; }
+
+const OPPOSITE_DIR = { north: "south", south: "north", east: "west", west: "east" } as const;
+
+/** Returns the winning team if the haunt is definitively over, or null. */
+function checkWinCondition(
+  playerStates: Record<string, import("@/lib/games/betrayal/types").PlayerGameState>,
+  phase: string,
+): "heroes" | "traitor" | null {
+  if (phase !== "haunt") return null;
+  const traitorDead = Object.values(playerStates).some(ps => ps.is_traitor && ps.is_dead);
+  if (traitorDead) return "heroes";
+  const heroes = Object.values(playerStates).filter(ps => !ps.is_traitor);
+  if (heroes.length > 0 && heroes.every(ps => ps.is_dead)) return "traitor";
+  return null;
+}
 
 /**
  * Betrayal's custom 8-sided dice have only 3 pip values:
@@ -1342,6 +1357,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const [showRopeTargets, setShowRopeTargets] = useState(false);
   const [showDynamiteTargets, setShowDynamiteTargets] = useState(false);
   const [combatResult, setCombatResult] = useState<CombatResultData | null>(null);
+  const [discoveryChoice, setDiscoveryChoice] = useState<[string, string] | null>(null);
+  const [smellingSaltsTarget, setSmellingSaltsTarget] = useState<string[] | null>(null);
   const [showBotLog, setShowBotLog] = useState(false);
   const [showHauntGuide, setShowHauntGuide] = useState(false);
   const [showEventLog, setShowEventLog] = useState(false);
@@ -1430,7 +1447,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const newLog = [...gs.event_log];
 
     const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
-    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const isChilled    = (gs.chilled_players   ?? []).includes(myPlayerId ?? "");
+    const effectiveSpeed = Math.max(0, myState.speed - (isRestrained ? 1 : 0) - (isChilled ? 1 : 0));
 
     // ── CSS sliding animation + move cost ───────────────────────────────────
     // Path is computed first so cost = path.length (rooms actually traversed).
@@ -1698,6 +1716,23 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them from death!`)); }
           else playSfx("/audio/betrayal/sfx/scream.mp3");
         }
+        // Ghost warns you: reveal a random unexplored room on your floor
+        const unexploredDoors = getUnexploredDoors(gs.placed_tiles, myState.floor);
+        const floorPool = (gs.remaining_tiles as Record<number, string[]>)[myState.floor] ?? [];
+        if (unexploredDoors.length > 0 && floorPool.length > 0) {
+          const doorEntry = unexploredDoors[Math.floor(Math.random() * unexploredDoors.length)];
+          const tileId = floorPool[Math.floor(Math.random() * floorPool.length)];
+          const requiredDoor = OPPOSITE_DIR[doorEntry.direction];
+          const placed = buildPlacedTile(tileId, myState.floor, doorEntry.x, doorEntry.y, requiredDoor, myPlayerId!);
+          if (placed) {
+            patch.placed_tiles = [...gs.placed_tiles, placed];
+            patch.remaining_tiles = {
+              ...gs.remaining_tiles,
+              [myState.floor]: floorPool.filter(id => id !== tileId),
+            } as Record<Floor, string[]>;
+            newLog.push(addLog("system", `👻 The ghost girl reveals: ${getTile(tileId)?.name ?? tileId}`));
+          }
+        }
       } else if (cardId === "omen-mask") {
         updatedState.might = Math.max(myState.might - 1, 0);
         updatedState.knowledge = Math.min(myState.knowledge + 2, char?.knowledgeMax ?? 8);
@@ -1878,11 +1913,12 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             else playSfx("/audio/betrayal/sfx/scream.mp3");
           }
         }
-        setDiceResult({ values: roll, label: `Dark Vision — rolled ${total}` });
+        setDiceResult({ values: roll, label: `Dark Vision — rolled ${total}`, diceCount: 2 });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-cold-spot") {
-        updatedState.speed = Math.max(myState.speed - 1, 0);
-        newLog.push(addLog("stat", `${playerName} lost 1 Speed from Cold Spot`));
+        // Track temporarily — speed is restored at the start of their next turn (handleEndTurn)
+        patch.chilled_players = [...new Set([...(gs.chilled_players ?? []), myPlayerId!])];
+        newLog.push(addLog("stat", `${playerName} is chilled by Cold Spot — -1 Speed until next turn 🥶`));
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-writing") {
         const roll = rollDice(1);
@@ -1904,7 +1940,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             else playSfx("/audio/betrayal/sfx/scream.mp3");
           }
         }
-        setDiceResult({ values: roll, label: `Writing on the Wall — rolled ${total}` });
+        setDiceResult({ values: roll, label: `Writing on the Wall — rolled ${total}`, diceCount: 1 });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-portrait") {
         const floorStates = { ...gs.player_states };
@@ -1934,7 +1970,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
           else playSfx("/audio/betrayal/sfx/scream.mp3");
         } else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
-        setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage` });
+        setDiceResult({ values: roll, label: `Falling — rolled ${total} Might damage`, diceCount: 2 });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-the-smell") {
         const roll = rollDice(3);
@@ -1948,25 +1984,39 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             if (didSave) { updatedState = saved; newLog.push(addLog("stat", `${playerName}'s Amulet saved them!`)); }
             else playSfx("/audio/betrayal/sfx/scream.mp3");
           } else playSfx("/audio/betrayal/sfx/stat-drop.mp3");
+          // Spawn a monster at the player's current location
+          const smellMonster: MonsterState = {
+            floor: myState.floor, x: myState.x, y: myState.y,
+            name: "The Creature", image: "/images/games/betrayal/monster.png",
+          };
+          patch.monsters = [...(gs.monsters ?? []), smellMonster];
+          newLog.push(addLog("system", `☠ Something emerges from the darkness...`));
+          playSfx("/audio/betrayal/sfx/monster-roar.mp3");
         } else {
           newLog.push(addLog("stat", `${playerName} escaped The Smell (rolled ${total})`));
         }
-        setDiceResult({ values: roll, label: `The Smell — rolled ${total}` });
+        setDiceResult({ values: roll, label: `The Smell — rolled ${total}`, diceCount: 3 });
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
       } else if (cardId === "ev-discovery") {
-        // Draw up to 2 item cards; player keeps both (simplified from "keep one")
-        const drawn: string[] = [];
+        // Draw 2 items; player picks 1 to keep, the other returns to the bottom of the deck
         let itemDeck = [...gs.item_deck];
-        for (let i = 0; i < 2 && itemDeck.length > 0; i++) {
-          drawn.push(itemDeck.shift()!);
-        }
-        if (drawn.length > 0) {
-          updatedState.items = [...(myState.items ?? []), ...drawn];
-          patch.item_deck = itemDeck;
-          patch.item_discard = [...drawn, ...gs.item_discard];
-          newLog.push(addLog("stat", `${playerName} discovered ${drawn.length} item(s) from Discovery`));
-        }
+        const drawn: string[] = [];
+        for (let i = 0; i < 2 && itemDeck.length > 0; i++) drawn.push(itemDeck.shift()!);
+        patch.item_deck = itemDeck; // remove drawn cards from deck immediately
         patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+        if (drawn.length === 2) {
+          // Show choice overlay — cards are in limbo until player picks
+          newLog.push(addLog("stat", `${playerName} found 2 items — must choose 1 to keep`));
+          patch.event_log = newLog.slice(-30);
+          await updateGs(patch);
+          setPendingCard(null);
+          setDiscoveryChoice([drawn[0], drawn[1]]);
+          return; // early return — the choice handler will give the item + return the other
+        } else if (drawn.length === 1) {
+          updatedState.items = [...(myState.items ?? []), drawn[0]];
+          patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
+          newLog.push(addLog("stat", `${playerName} discovered an item from Discovery`));
+        }
       } else if (cardId === "ev-locked-door") {
         // Lock a random door on the current tile that connects to a neighbor
         const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
@@ -2069,11 +2119,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         : `${targetPlayer?.name} countered ${attackerPlayer?.name} for ${damage} Might${newPlayerStates[myPlayerId!]?.is_dead ? " — eliminated!" : ""}`;
 
     newLog2.push(addLog("stat", resultMsg));
-    await updateGs({
-      player_states: newPlayerStates,
-      turn_phase: "done", // attacking costs your action for the turn
-      event_log: newLog2.slice(-30),
-    });
+    const combatPatch = { player_states: newPlayerStates, turn_phase: "done" as const, event_log: newLog2.slice(-30) };
+    const autoWinner = checkWinCondition(newPlayerStates, gs.phase);
+    if (autoWinner) {
+      await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...combatPatch, winner: autoWinner, phase: "ended" } }).eq("code", code);
+    } else {
+      await updateGs(combatPatch);
+    }
 
     setCombatResult({
       attackerName: attackerPlayer?.name ?? "?",
@@ -2084,7 +2136,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       winner,
     });
     setShowAttackTargets(false);
-  }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+  }, [isMyTurn, myState, gs, myPlayerId, players, code, addLog, updateGs, playSfx]);
 
   // ── Revolver attack (ranged — same floor) ─────────────────────────────────
   const handleRevolverAttack = useCallback(async (targetId: string) => {
@@ -2134,11 +2186,17 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       : `${targetPlayer?.name} evaded and countered ${attackerPlayer?.name} for ${damage} Might`;
 
     revolverLog.push(addLog("stat", resultMsg));
-    await updateGs({ player_states: newPlayerStates, turn_phase: "done", event_log: revolverLog.slice(-30) });
+    const revolverPatch = { player_states: newPlayerStates, turn_phase: "done" as const, event_log: revolverLog.slice(-30) };
+    const autoWinner = checkWinCondition(newPlayerStates, gs.phase);
+    if (autoWinner) {
+      await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...revolverPatch, winner: autoWinner, phase: "ended" } }).eq("code", code);
+    } else {
+      await updateGs(revolverPatch);
+    }
 
     setCombatResult({ attackerName: attackerPlayer?.name ?? "?", targetName: targetPlayer?.name ?? "?", attackerRolls, defenderRolls, damage, winner });
     setShowRevolverTargets(false);
-  }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
+  }, [isMyTurn, myState, gs, myPlayerId, players, code, addLog, updateGs, playSfx]);
 
   // ── Rope attack (restrain target — they lose 1 Speed next turn) ───────────
   const handleRopeAttack = useCallback(async (targetId: string) => {
@@ -2221,9 +2279,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       nextIndex = (nextIndex + 1) % gs.turn_order.length;
       attempts++;
     }
-    // Clear restraint for the player ending their turn (restraint lasts 1 turn)
+    // Clear restraint + chill for the player ending their turn (both last 1 turn)
     const currentId = gs.turn_order[gs.current_turn_index];
     const newRestrained = (gs.restrained_players ?? []).filter(id => id !== currentId);
+    const newChilled    = (gs.chilled_players   ?? []).filter(id => id !== currentId);
 
     // Monster movement + damage (host-only, haunt phase)
     let newMonsters = gs.monsters ?? [];
@@ -2285,8 +2344,15 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             const heroName = players.find(p => p.id === hid)?.name ?? "?";
             monsterLog.push(addLog("stat", `☠ ${monster.name} attacks ${heroName}! -1 Might (now ${newMight}/${char?.mightMax ?? "?"})`));
             if (newMight <= 0) {
-              newPlayerStates[hid] = { ...newPlayerStates[hid], is_dead: true };
-              monsterLog.push(addLog("death", `${heroName} was killed by the creature!`));
+              let dps = { ...newPlayerStates[hid], is_dead: true };
+              const { state: amuletSaved, saved: didSave } = checkAmulet(dps);
+              if (didSave) {
+                dps = amuletSaved;
+                monsterLog.push(addLog("stat", `${heroName}'s Amulet saved them from the creature!`));
+              } else {
+                monsterLog.push(addLog("death", `${heroName} was killed by the creature!`));
+              }
+              newPlayerStates[hid] = dps;
             }
           }
         }
@@ -2294,15 +2360,25 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     }
 
     const newLog = [...gs.event_log, ...monsterLog].slice(-30);
-    await updateGs({
+    const endTurnPatch = {
       current_turn_index: nextIndex,
-      turn_phase: "move",
+      turn_phase: "move" as const,
       moves_used: 0,
       restrained_players: newRestrained,
+      chilled_players: newChilled,
       monsters: newMonsters,
       ...(monsterLog.length > 0 ? { player_states: newPlayerStates, event_log: newLog } : {}),
-    });
-  }, [isMyTurn, isHost, gs, players, updateGs, addLog, playSfx]);
+    };
+    // Auto-end: check if all heroes or the traitor died this round
+    if (monsterLog.length > 0) {
+      const autoWinner = checkWinCondition(newPlayerStates, gs.phase);
+      if (autoWinner) {
+        await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...endTurnPatch, winner: autoWinner, phase: "ended" } }).eq("code", code);
+        return;
+      }
+    }
+    await updateGs(endTurnPatch);
+  }, [isMyTurn, isHost, gs, players, code, updateGs, addLog, playSfx]);
 
   // ── Use item (consumables) ────────────────────────────────────────────────
   const handleUseItem = useCallback(async (itemId: string) => {
@@ -2319,17 +2395,65 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       const newMight = Math.min(char.mightMax, myState.might + 2);
       updatedState.might = newMight;
       newLog.push(addLog("stat", `${playerName} used Healing Salve (+2 Might)`));
+      await updateGs({ player_states: { ...gs.player_states, [myPlayerId]: updatedState }, event_log: newLog.slice(-30) });
     } else if (itemId === "smelling-salts") {
-      const newSanity = Math.min(char.sanityMax, myState.sanity + 2);
-      updatedState.sanity = newSanity;
-      newLog.push(addLog("stat", `${playerName} used Smelling Salts (+2 Sanity)`));
+      // Show target picker — "a player in your room" (card text); includes self
+      const roomMates = players.filter(p => {
+        const ps = gs.player_states[p.id];
+        return ps && !ps.is_dead && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+      });
+      if (roomMates.length <= 1) {
+        // Only self in the room — heal self immediately
+        const newSanity = Math.min(char.sanityMax, myState.sanity + 2);
+        updatedState.sanity = newSanity;
+        newLog.push(addLog("stat", `${playerName} used Smelling Salts on themselves (+2 Sanity)`));
+        await updateGs({ player_states: { ...gs.player_states, [myPlayerId]: updatedState }, event_log: newLog.slice(-30) });
+      } else {
+        // Let the player pick a target; consume the item now
+        await updateGs({ player_states: { ...gs.player_states, [myPlayerId]: updatedState }, event_log: newLog.slice(-30) });
+        setSmellingSaltsTarget(roomMates.map(p => p.id));
+      }
+      return;
     }
-
-    await updateGs({
-      player_states: { ...gs.player_states, [myPlayerId]: updatedState },
-      event_log: newLog.slice(-30),
-    });
   }, [isMyTurn, myState, myPlayerId, myChar, players, gs, addLog, updateGs]);
+
+  // ── Smelling Salts target heal ────────────────────────────────────────────
+  const handleSmellingSaltsHeal = useCallback(async (targetId: string) => {
+    const targetPs = gs.player_states[targetId];
+    const targetChar = getCharacter(targetPs?.character_id ?? "");
+    if (!targetPs || !targetChar) return;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const targetName = players.find(p => p.id === targetId)?.name ?? "?";
+    const newSanity = Math.min(targetChar.sanityMax, targetPs.sanity + 2);
+    const newLog = [...gs.event_log,
+      addLog("stat", `${playerName} used Smelling Salts on ${targetName} (+2 Sanity)`),
+    ].slice(-30);
+    await updateGs({
+      player_states: { ...gs.player_states, [targetId]: { ...targetPs, sanity: newSanity } },
+      event_log: newLog,
+    });
+    setSmellingSaltsTarget(null);
+    playSfx("/audio/betrayal/sfx/item-pickup.mp3");
+  }, [gs, myPlayerId, players, addLog, updateGs, playSfx]);
+
+  // ── Discovery pick (ev-discovery: keep 1, return 1 to deck bottom) ───────
+  const handleDiscoveryPick = useCallback(async (keptId: string, returnedId: string) => {
+    if (!myState || !myPlayerId) return;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newItems = [...(myState.items ?? []), keptId];
+    // returnedId goes back to the bottom of the item deck (not discard)
+    const newItemDeck = [...gs.item_deck, returnedId];
+    const newLog = [...gs.event_log,
+      addLog("stat", `${playerName} kept ${getCard(keptId)?.name} and returned ${getCard(returnedId)?.name} to the deck`),
+    ].slice(-30);
+    await updateGs({
+      player_states: { ...gs.player_states, [myPlayerId]: { ...myState, items: newItems } },
+      item_deck: newItemDeck,
+      event_log: newLog,
+    });
+    setDiscoveryChoice(null);
+    playSfx("/audio/betrayal/sfx/item-pickup.mp3");
+  }, [myState, myPlayerId, players, gs, addLog, updateGs, playSfx]);
 
   // ── Declare winner ────────────────────────────────────────────────────────
   const handleDeclareWinner = useCallback(async (winner: "heroes" | "traitor") => {
@@ -2413,6 +2537,64 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
       {/* Combat result overlay */}
       {combatResult && <CombatOverlay result={combatResult} onDismiss={() => setCombatResult(null)} />}
+
+      {/* Discovery choice overlay — pick 1 item to keep, the other returns to deck */}
+      {discoveryChoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)" }}>
+          <div className="max-w-sm w-full rounded-2xl p-6 space-y-4" style={{ background: "rgba(8,5,12,0.98)", border: "1px solid rgba(99,102,241,0.4)" }}>
+            <h2 className="text-lg font-black text-center" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+              {lang === "th" ? "เลือก 1 ไอเทมที่จะเก็บ" : "Discovery — Choose 1 Item to Keep"}
+            </h2>
+            <p className="text-xs text-center" style={{ color: "#7a6a5a" }}>
+              {lang === "th" ? "อีกชิ้นจะถูกคืนไปที่ก้นสำรับ" : "The other will be returned to the bottom of the deck."}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {discoveryChoice.map((cid, i) => {
+                const c = getCard(cid);
+                const other = discoveryChoice[1 - i];
+                return (
+                  <button key={cid} onClick={() => handleDiscoveryPick(cid, other)}
+                    className="flex flex-col items-center gap-2 rounded-xl p-4 transition-all"
+                    style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.3)" }}>
+                    <span className="text-3xl">📦</span>
+                    <span className="text-sm font-bold text-center" style={{ color: "#e8d5b0" }}>{lang === "th" && c?.nameTh ? c.nameTh : c?.name}</span>
+                    <span className="text-xs text-center" style={{ color: "#7a6a5a" }}>{lang === "th" && c?.descriptionTh ? c.descriptionTh : c?.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smelling Salts target picker */}
+      {smellingSaltsTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)" }}>
+          <div className="max-w-xs w-full rounded-2xl p-6 space-y-4" style={{ background: "rgba(8,5,12,0.98)", border: "1px solid rgba(168,85,247,0.4)" }}>
+            <h2 className="text-lg font-black text-center" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+              {lang === "th" ? "เลือกผู้เล่นที่จะฟื้นฟูจิตใจ" : "Smelling Salts — Choose Target"}
+            </h2>
+            <div className="space-y-2">
+              {smellingSaltsTarget.map(pid => {
+                const p = players.find(x => x.id === pid);
+                const ps = gs.player_states[pid];
+                const ch = getCharacter(ps?.character_id ?? "");
+                return (
+                  <button key={pid} onClick={() => handleSmellingSaltsHeal(pid)}
+                    className="w-full flex items-center gap-3 rounded-xl px-4 py-3 transition-all"
+                    style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)" }}>
+                    <span className="font-bold text-sm" style={{ color: "#e8d5b0" }}>{p?.name ?? pid}</span>
+                    <span className="text-xs ml-auto" style={{ color: "#a855f7" }}>◈{ps?.sanity}/{ch?.sanityMax}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setSmellingSaltsTarget(null)} className="w-full py-2 rounded-xl text-xs" style={{ color: "#5a4a3a" }}>
+              {lang === "th" ? "ยกเลิก" : "Cancel"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="sticky top-0 z-20 flex-shrink-0" style={{ background: "rgba(10,7,8,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.12)" }}>
@@ -2977,7 +3159,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     <p className="text-xs truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#7a6a5a" }}>
                       {p.id.startsWith("bot-") && <span className="mr-1 text-indigo-400">🤖</span>}
                       {p.name}
-                      {ps?.is_traitor && <span className="ml-1 text-red-400">⚔</span>}
+                      {ps?.is_traitor && p.id === myPlayerId && <span className="ml-1 text-red-400">⚔</span>}
                       {isDead && <span className="ml-1" style={{ color: "#5a4a3a" }}>eliminated</span>}
                     </p>
                     {ch && ps && !isDead && (

@@ -735,6 +735,7 @@ function SessionRoom() {
         moves_used: 0,
         locked_doors: [],
         restrained_players: [],
+        chilled_players: [],
         player_states: playerStates,
         event_log: [],
         haunt_objectives: null,
