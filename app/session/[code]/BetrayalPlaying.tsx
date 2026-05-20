@@ -123,13 +123,28 @@ function StatBar({ label, value, max, color, flash }: { label: string; value: nu
   );
 }
 
-// ─── Stat Flash CSS (injected once) ──────────────────────────────────────────
+// ─── Global injected CSS ─────────────────────────────────────────────────────
 const STAT_FLASH_STYLE = `
 @keyframes statFloat {
   0%   { opacity: 1; transform: translateY(0) scale(1.2); }
   40%  { opacity: 1; transform: translateY(-10px) scale(1); }
   100% { opacity: 0; transform: translateY(-22px) scale(0.85); }
 }
+@keyframes yourTurnPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+/* Ghost-gothic button hover glow */
+.btn-betrayal:hover  { filter: brightness(1.18); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+.btn-betrayal:active { transform: translateY(0);  filter: brightness(0.95); }
+.btn-betrayal { transition: filter 0.15s, transform 0.15s, box-shadow 0.15s; }
+.btn-betrayal:disabled { filter: none; transform: none; box-shadow: none; cursor: not-allowed; }
+/* Item chip hover */
+.item-chip:hover { filter: brightness(1.25); transform: scale(1.04); }
+.item-chip { transition: filter 0.12s, transform 0.12s; }
+/* Floor button hover */
+.floor-btn:hover { filter: brightness(1.2); }
+.floor-btn { transition: filter 0.12s, background 0.12s; }
 `;
 
 // ─── Map Tile ─────────────────────────────────────────────────────────────────
@@ -444,7 +459,7 @@ function MansionMap({
         <div className="flex gap-1 flex-1 flex-wrap">
           {([2, 1, 0] as Floor[]).map((f) => (
             <button key={f} onClick={() => setViewFloor(f)}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              className="floor-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
               style={{
                 background: viewFloor === f ? "rgba(212,175,55,0.2)" : "rgba(255,255,255,0.04)",
                 border: `1px solid ${viewFloor === f ? "rgba(212,175,55,0.5)" : "rgba(255,255,255,0.08)"}`,
@@ -460,19 +475,19 @@ function MansionMap({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => setZoom((z) => Math.max(0.45, +(z - 0.15).toFixed(2)))}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors"
+            className="btn-betrayal w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7a6a5a" }}
             title="Zoom out"
           >−</button>
           <button
             onClick={() => setZoom(1)}
-            className="text-xs px-1.5 py-1 rounded-lg min-w-[3.2rem] text-center transition-colors"
+            className="btn-betrayal text-xs px-1.5 py-1 rounded-lg min-w-[3.2rem] text-center"
             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", color: "#5a4a3a" }}
             title="Reset zoom"
           >{Math.round(zoom * 100)}%</button>
           <button
             onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors"
+            className="btn-betrayal w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7a6a5a" }}
             title="Zoom in"
           >+</button>
@@ -2718,16 +2733,18 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
               <span style={{ color: "#c8b89a" }}>{gs.omen_count}</span>
             </div>
             {/* Current turn */}
-            <div className="px-2 py-1 rounded-lg text-xs"
+            <div className="px-2 py-1 rounded-lg text-xs font-bold"
               style={{
-                background: isBotTurn ? "rgba(99,102,241,0.10)" : "rgba(212,175,55,0.08)",
-                border: `1px solid ${isBotTurn ? "rgba(99,102,241,0.3)" : isMyTurn ? "rgba(212,175,55,0.3)" : "rgba(212,175,55,0.15)"}`,
+                background: isBotTurn ? "rgba(99,102,241,0.10)" : isMyTurn ? "rgba(212,175,55,0.18)" : "rgba(212,175,55,0.06)",
+                border: `1px solid ${isBotTurn ? "rgba(99,102,241,0.3)" : isMyTurn ? "rgba(212,175,55,0.55)" : "rgba(212,175,55,0.15)"}`,
                 color: isBotTurn ? "#818cf8" : isMyTurn ? "#d4af37" : "#5a4a3a",
+                animation: isMyTurn && !isBotTurn ? "yourTurnPulse 2s ease-in-out infinite" : undefined,
+                boxShadow: isMyTurn && !isBotTurn ? "0 0 10px rgba(212,175,55,0.25)" : undefined,
               }}>
               {isBotTurn
                 ? `🤖 ${currentPlayer?.name ?? "Bot"} thinking…`
                 : isMyTurn
-                ? "Your turn"
+                ? "✨ Your turn"
                 : `${currentPlayer?.name ?? "?"}'s turn`}
             </div>
             {/* Mute toggle */}
@@ -2993,13 +3010,13 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             <div className="flex-shrink-0 flex gap-2">
               {myState.is_traitor ? (
                 <button onClick={() => setConfirmWinnerRole("traitor")}
-                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                   style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                   ⚔ Declare Traitor Victory
                 </button>
               ) : (
                 <button onClick={() => setConfirmWinnerRole("heroes")}
-                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                   style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
                   🕯 Declare Heroes Win
                 </button>
@@ -3013,7 +3030,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleEndTurn}
-                  className="flex-1 py-2 rounded-xl text-sm font-bold"
+                  className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                   style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                   End Turn
                 </button>
@@ -3023,7 +3040,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   <button
                     disabled={!canAttack}
                     onClick={async () => { await updateGs({ turn_phase: "action" }); }}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                     style={{
                       background: canAttack ? "rgba(239,68,68,0.08)" : "rgba(100,100,100,0.05)",
                       border: `1px solid ${canAttack ? "rgba(239,68,68,0.25)" : "rgba(100,100,100,0.2)"}`,
@@ -3038,14 +3055,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
                 {gs.phase === "haunt" && gs.turn_phase === "action" && validAttackTargets.length > 0 && !showAttackTargets && !showRevolverTargets && (
                   <button onClick={() => setShowAttackTargets(true)}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                     style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                     ⚔ Attack
                   </button>
                 )}
                 {gs.phase === "haunt" && gs.turn_phase === "action" && revolverTargets.length > 0 && !showAttackTargets && !showRevolverTargets && (
                   <button onClick={() => setShowRevolverTargets(true)}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                     style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#f97316", fontFamily: "var(--font-gothic)" }}>
                     🔫 Revolver
                   </button>
@@ -3071,7 +3088,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                           ? `🏃 Garden Escape — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
                           : `🏃 Garden Escape — ${total} < 4. Not fast enough — try again next turn.` });
                       }}
-                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                       style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
                       🏃 Garden Escape (Speed 4+)
                     </button>
@@ -3092,7 +3109,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                           ? `💪 Vault Break — ${total} ≥ 4! You broke through! Declare Heroes Win if 3 heroes have escaped.`
                           : `💪 Vault Break — ${total} < 4. Not strong enough — try again next turn.` });
                       }}
-                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                       style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
                       💪 Vault Break (Might 4+)
                     </button>
@@ -3101,7 +3118,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 {/* Rope attack — restrain a target in same room */}
                 {gs.phase === "haunt" && gs.turn_phase === "action" && (myState?.items ?? []).includes("rope") && validAttackTargets.length > 0 && !showRopeTargets && !showAttackTargets && !showRevolverTargets && !showDynamiteTargets && (
                   <button onClick={() => setShowRopeTargets(true)}
-                    className="flex-1 py-2 rounded-xl text-sm font-bold"
+                    className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                     style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b", fontFamily: "var(--font-gothic)" }}>
                     🪢 Rope
                   </button>
@@ -3119,7 +3136,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   if (availableDoors.length === 0) return null;
                   return (
                     <button onClick={() => setShowDynamiteTargets(true)}
-                      className="flex-1 py-2 rounded-xl text-sm font-bold"
+                      className="btn-betrayal flex-1 py-3 min-h-[44px] rounded-xl text-sm font-bold"
                       style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
                       💣 Dynamite
                     </button>
@@ -3275,10 +3292,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                   {myState.items.map((itemId) => {
                     const item = getCard(itemId);
                     const isConsumable = itemId === "healing-salve" || itemId === "smelling-salts";
+                    const ITEM_EMOJI: Record<string, string> = {
+                      "healing-salve": "💊", "smelling-salts": "🧪",
+                      "amulet": "🔮", "lantern": "🕯️", "lucky-coin": "🪙",
+                      "axe": "🪓", "knife": "🗡️", "sacrificial-dagger": "⚔️",
+                      "rope": "🪢", "dynamite": "💣", "revolver": "🔫",
+                      "holy-symbol": "✝️", "ancient-book": "📖", "candle": "🕯️",
+                      "omen-key": "🔑", "omen-skull": "💀",
+                    };
                     return item ? (
-                      <div key={itemId} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
+                      <div key={itemId} className="item-chip flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
                         style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}
                         onClick={() => setViewingItemCard(itemId)}>
+                        <span>{ITEM_EMOJI[itemId] ?? "📦"}</span>
                         {item.name}
                         {isConsumable && isMyTurn && (
                           <button
@@ -3347,12 +3373,22 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
             </button>
             {showEventLog && (
               <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
-                {gs.event_log.slice().reverse().map((ev) => (
-                  <p key={ev.id} className="text-xs" style={{ color: "#7a6a5a" }}>
-                    <span style={{ color: "#4a3a2a" }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} </span>
-                    {ev.message}
-                  </p>
-                ))}
+                {gs.event_log.slice().reverse().map((ev) => {
+                  const evColor = ev.type === "death" ? "#ef4444"
+                    : ev.type === "haunt" ? "#a855f7"
+                    : ev.type === "omen"  ? "#ef4444"
+                    : ev.type === "stat"  ? "#f59e0b"
+                    : ev.type === "system" ? "#3b82f6"
+                    : ev.type === "card_draw" ? "#22c55e"
+                    : ev.type === "tile_reveal" ? "#22c55e"
+                    : "#7a6a5a";
+                  return (
+                    <p key={ev.id} className="text-xs leading-snug" style={{ color: evColor }}>
+                      <span style={{ color: "#4a3a2a", marginRight: 4 }}>{new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {ev.message}
+                    </p>
+                  );
+                })}
                 {gs.event_log.length === 0 && <p className="text-xs" style={{ color: "#3a2a1a" }}>The mansion awaits...</p>}
               </div>
             )}
