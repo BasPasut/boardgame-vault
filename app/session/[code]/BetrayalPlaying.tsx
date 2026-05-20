@@ -1423,22 +1423,23 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const def = getTile(tile.tile_id);
     const newLog = [...gs.event_log];
 
-    // Cost: 1 move per room (cross-floor stairwell counts as 1)
-    const newMovesUsed = gs.moves_used + 1;
     const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
     const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
-    const movesLeft = effectiveSpeed - newMovesUsed;
 
-    // ── CSS sliding animation ────────────────────────────────────────────────
-    // Strategy: place a floating token at the current tile first (gives CSS a
-    // start point), then step through each path node; the 240 ms CSS transition
-    // on left/top handles the smooth interpolation between every step.
+    // ── CSS sliding animation + move cost ───────────────────────────────────
+    // Path is computed first so cost = path.length (rooms actually traversed).
+    // Previously cost was hardcoded to 1 regardless of distance — players could
+    // jump 4 rooms and still have their full speed remaining.
     const path = findPath(
       gs.placed_tiles,
       myState.floor, myState.x, myState.y,
       floor, x, y,
       gs.locked_doors ?? [],
     );
+    const moveCost    = path?.length ?? 1;          // each room in path costs 1 move
+    const newMovesUsed = gs.moves_used + moveCost;
+    const movesLeft   = effectiveSpeed - newMovesUsed;
+
     if (path && path.length > 0) {
       isAnimatingRef.current = true;
       // Pin floating token at origin so browser knows where to transition FROM
@@ -1858,7 +1859,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       if (cardId === "ev-dark-vision") {
         const roll = rollDice(2);
         const total = roll.reduce((a, b) => a + b, 0);
-        if (total >= 4) {
+        if (total >= 3) { // 3+ ≈42% success (4+ was only 14% — impossible to achieve reliably)
           updatedState.knowledge = Math.min(myState.knowledge + 1, char?.knowledgeMax ?? 8);
           newLog.push(addLog("stat", `${playerName} gained +1 Knowledge from Dark Vision (rolled ${total})`));
         } else {
