@@ -734,6 +734,7 @@ function SessionRoom() {
         event_log: [],
         haunt_objectives: null,
         pending_card: null,
+        monsters: [],
       },
     }).eq("code", code);
   };
