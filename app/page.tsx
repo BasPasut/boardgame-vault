@@ -87,7 +87,7 @@ type Translations = {
   playNow: string; players: string; gamesCount: (n: number) => string;
 };
 
-function GameCardStandard({ game, lang, t, featured = false }: { game: GameConfig; lang: Lang; t: Translations; featured?: boolean }) {
+function GameCardStandard({ game, lang, t }: { game: GameConfig; lang: Lang; t: Translations }) {
   const cat = CATEGORIES.find((c) => c.id === game.category)!;
   return (
     <div
@@ -95,7 +95,7 @@ function GameCardStandard({ game, lang, t, featured = false }: { game: GameConfi
       style={game.available ? { boxShadow: `0 0 0 1px ${cat.border}` } : undefined}
     >
       {/* Image */}
-      <div className={`relative ${featured ? "h-56" : "h-44"} bg-gradient-to-br ${game.cardTheme} flex-shrink-0 overflow-hidden`}>
+      <div className={`relative h-44 bg-gradient-to-br ${game.cardTheme} flex-shrink-0 overflow-hidden`}>
         {game.coverImage ? (
           <Image
             src={game.coverImage}
@@ -323,7 +323,6 @@ export default function HomePage() {
 
         {CATEGORIES.map((cat) => {
           const catGames = GAMES.filter((g) => g.category === cat.id);
-          const isSingle = catGames.length === 1;
 
           return (
             <div key={cat.id}>
@@ -351,17 +350,11 @@ export default function HomePage() {
               </div>
 
               {/* ── Cards ── */}
-              {isSingle ? (
-                <div className="max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg w-full">
-                  <GameCardStandard game={catGames[0]} lang={lang} t={t} featured />
-                </div>
-              ) : (
-                <div className={`grid gap-5 grid-cols-1 sm:grid-cols-2 ${catGames.length >= 3 ? "lg:grid-cols-3" : ""}`}>
-                  {catGames.map((game) => (
-                    <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
-                  ))}
-                </div>
-              )}
+              <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {catGames.map((game) => (
+                  <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
+                ))}
+              </div>
             </div>
           );
         })}
