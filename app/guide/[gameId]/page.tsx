@@ -288,6 +288,168 @@ const GUIDES: Record<string, {
     },
   },
 
+  "kam-tong-chuom": {
+    name: { en: "Let's Connect the Word", th: "คำต้องเชื่อม" },
+    cover: null,
+    players: "3–10",
+    tagline: {
+      en: "Say a Thai word that shares no common syllable with any previous word — or get eliminated!",
+      th: "พูดคำที่ไม่มีพยางค์ร่วมกับคำก่อนหน้าในรอบนี้ — ไม่งั้นออก!",
+    },
+    overview: {
+      en: "Players take turns speaking Thai words. Any word that shares a 2+ character substring with any previously said word in the current sub-round is invalid — that player is eliminated! Survive until you're the last one standing to win the round. Collect the most points across all rounds to win the game.",
+      th: "ผู้เล่นผลัดกันพูดคำภาษาไทย คำใดก็ตามที่มีพยางค์ย่อย 2+ ตัวอักษรร่วมกับคำที่เคยพูดในรอบปัจจุบัน ถือว่าไม่ valid — ผู้เล่นนั้นออกจากรอบ! รอดชีวิตเป็นคนสุดท้ายเพื่อชนะรอบ และเก็บคะแนนให้มากที่สุดตลอดทุกรอบเพื่อชนะเกม",
+    },
+    winConditions: [
+      {
+        icon: "🏆",
+        color: "#d4af37",
+        borderColor: "rgba(212,175,55,0.3)",
+        title: { en: "Last Player Standing", th: "ผู้รอดชีวิตคนสุดท้าย" },
+        body: {
+          en: "Be the last player not eliminated in a round to win +1 point. After all rounds, the player with the most points wins!",
+          th: "เป็นผู้เล่นคนสุดท้ายที่ไม่ถูกออกในรอบเพื่อได้ +1 คะแนน หลังจากครบทุกรอบ ผู้ที่มีคะแนนมากที่สุดชนะ!",
+        },
+      },
+      {
+        icon: "⚖️",
+        color: "#a855f7",
+        borderColor: "rgba(168,85,247,0.3)",
+        title: { en: "Challenge Bonus", th: "โบนัส Challenge" },
+        body: {
+          en: "Win a challenge vote (where others decide if a word was valid) to earn +1 bonus point. Use it wisely — lose and you're out!",
+          th: "ชนะการโหวต Challenge (ที่ผู้อื่นตัดสินว่าคำ valid หรือไม่) เพื่อได้ +1 คะแนนโบนัส ใช้ให้ฉลาด — แพ้แล้วออกเลย!",
+        },
+      },
+    ],
+    gameFlow: [
+      { icon: "🏰", label: { en: "Lobby", th: "ห้องรอ" } },
+      { icon: "🎙️", label: { en: "Say a Word", th: "พูดคำ" } },
+      { icon: "✅", label: { en: "Valid / ❌ Out", th: "Valid / ❌ ออก" } },
+      { icon: "🏆", label: { en: "Last Standing", th: "คนสุดท้าย" } },
+      { icon: "🔄", label: { en: "Next Round", th: "รอบถัดไป" } },
+    ],
+    gameFlowNote: {
+      en: "Rounds repeat until all rounds are played; the player with the most total points wins",
+      th: "รอบวนซ้ำจนครบ; ผู้ที่มีคะแนนรวมมากที่สุดชนะ",
+    },
+    phases: [
+      {
+        titleKey: "turn",
+        title: { en: "Your Turn 🎙️", th: "ตาของคุณ 🎙️" },
+        accent: "rgba(34,197,94,0.15)",
+        steps: {
+          en: [
+            "When it's your turn, you have 8 seconds to say or type a Thai word.",
+            "Tap 🎙️ to speak (Safari/Chrome desktop) or type directly in the text box.",
+            "Your word must NOT share any 2+ character substring with any word already said this sub-round.",
+            "If your word is valid, it's added to the list and the next player goes.",
+            "If your word has a common substring — or you run out of time — you're eliminated from this round.",
+            "The word list resets after each elimination (new sub-round begins).",
+          ],
+          th: [
+            "เมื่อถึงตาคุณ คุณมีเวลา 8 วินาทีเพื่อพูดหรือพิมพ์คำภาษาไทย",
+            "แตะ 🎙️ เพื่อพูด (Safari/Chrome desktop) หรือพิมพ์ตรงในช่องข้อความ",
+            "คำของคุณต้องไม่มีพยางค์ย่อย 2+ ตัวอักษรร่วมกับคำใดก็ตามที่พูดในรอบย่อยนี้",
+            "ถ้าคำของคุณ valid จะเพิ่มลงในรายการและผู้เล่นคนถัดไปจะเล่น",
+            "ถ้าคำมีพยางค์ร่วม — หรือหมดเวลา — คุณออกจากรอบนี้",
+            "รายการคำจะรีเซ็ตหลังจากแต่ละการออก (รอบย่อยใหม่เริ่ม)",
+          ],
+        },
+      },
+      {
+        titleKey: "challenge",
+        title: { en: "Challenge Phase 🚨", th: "ช่วง Challenge 🚨" },
+        accent: "rgba(168,85,247,0.15)",
+        steps: {
+          en: [
+            "Any active player can press 'Challenge' on the most recently spoken word at any time.",
+            "The game pauses for 60 seconds of open discussion — talk it out!",
+            "All players then vote: do you support the Challenger (word is invalid) or the Challenged player (word is valid)?",
+            "The side with fewer votes is eliminated. Ties go in favour of the challenged word being valid.",
+            "The winning side earns +1 bonus point. Then the game continues.",
+          ],
+          th: [
+            "ผู้เล่นที่ยังอยู่ในเกมสามารถกด 'Challenge' สำหรับคำล่าสุดได้ตลอดเวลา",
+            "เกมหยุดชั่วคราวเพื่อถกเถียงแบบเปิด 60 วินาที — คุยกันได้เลย!",
+            "ผู้เล่นทุกคนโหวต: คุณสนับสนุน Challenger (คำไม่ valid) หรือผู้ถูก Challenge (คำ valid)?",
+            "ฝ่ายที่ได้คะแนนโหวตน้อยกว่าออกจากรอบ คะแนนเท่ากัน = คำ valid",
+            "ฝ่ายชนะได้ +1 คะแนนโบนัส แล้วเกมดำเนินต่อ",
+          ],
+        },
+      },
+    ],
+    rules: {
+      title: { en: "Key Rules", th: "กฎสำคัญ" },
+      items: {
+        en: [
+          {
+            icon: "🔤",
+            title: "Sub-word rule",
+            body: "A word is invalid if any sequence of 2+ consecutive characters from it appears anywhere in any previously said word this sub-round. Example: 'รถไฟ' (rot-fai) and 'ไฟฟ้า' (fai-fa) conflict because 'ไฟ' (2 chars) appears in both.",
+          },
+          {
+            icon: "⏱️",
+            title: "8-second timer",
+            body: "You have exactly 8 seconds to submit your word after the previous player's turn ends. If the timer runs out, you're eliminated from this round. No extensions!",
+          },
+          {
+            icon: "♻️",
+            title: "Sub-round reset",
+            body: "Each time a player is eliminated, the word list resets — this starts a new sub-round. Words used in previous sub-rounds can be used again (they're forgotten!). Strategy: remember which words you've used before to reuse them safely.",
+          },
+          {
+            icon: "🎙️",
+            title: "Mic + text input",
+            body: "Use the 🎙️ microphone button to speak your word (works best in Safari on iOS, or Chrome on desktop). Alternatively, type the word manually. For iOS users: please use Safari — Chrome on iOS doesn't support Web Speech API.",
+          },
+          {
+            icon: "🚨",
+            title: "Challenging wisely",
+            body: "Challenge any word you think is invalid — but if the group votes against you, you're the one who gets eliminated! Make sure you have a strong argument before challenging.",
+          },
+          {
+            icon: "🏆",
+            title: "Winning",
+            body: "After all rounds, the player with the most points wins. Points come from surviving rounds (last player standing = +1) and winning challenge votes (+1 each). Aim to last long AND challenge smart!",
+          },
+        ],
+        th: [
+          {
+            icon: "🔤",
+            title: "กฎพยางค์ย่อย",
+            body: "คำไม่ valid ถ้ามีลำดับอักษร 2+ ตัวติดกันที่ปรากฏในคำที่เคยพูดในรอบย่อยนี้ ตัวอย่าง: 'รถไฟ' และ 'ไฟฟ้า' ขัดกัน เพราะ 'ไฟ' (2 ตัวอักษร) ปรากฏในทั้งสองคำ",
+          },
+          {
+            icon: "⏱️",
+            title: "ตัวจับเวลา 8 วินาที",
+            body: "คุณมีเวลา 8 วินาทีเพื่อส่งคำหลังจากตาผู้เล่นก่อนหน้าจบ ถ้าหมดเวลา คุณออกจากรอบนี้ ไม่มีการต่อเวลา!",
+          },
+          {
+            icon: "♻️",
+            title: "รีเซ็ตรอบย่อย",
+            body: "ทุกครั้งที่มีผู้เล่นออก รายการคำจะรีเซ็ต — นี่คือการเริ่มรอบย่อยใหม่ คำที่ใช้ในรอบย่อยก่อนหน้าสามารถใช้ซ้ำได้ (ลืมไปแล้ว!) กลยุทธ์: จำคำที่เคยใช้ไว้เพื่อใช้ซ้ำได้อย่างปลอดภัย",
+          },
+          {
+            icon: "🎙️",
+            title: "ไมค์ + พิมพ์",
+            body: "ใช้ปุ่ม 🎙️ เพื่อพูดคำ (ทำงานดีที่สุดใน Safari บน iOS หรือ Chrome บน desktop) หรือพิมพ์คำด้วยตนเอง สำหรับผู้ใช้ iOS: กรุณาใช้ Safari — Chrome บน iOS ไม่รองรับ Web Speech API",
+          },
+          {
+            icon: "🚨",
+            title: "Challenge อย่างฉลาด",
+            body: "Challenge คำที่คุณคิดว่าไม่ valid ได้ — แต่ถ้ากลุ่มโหวตต่อต้านคุณ คุณเองที่จะออก! ตรวจสอบให้แน่ใจว่าคุณมีเหตุผลที่แข็งแกร่งก่อน Challenge",
+          },
+          {
+            icon: "🏆",
+            title: "การชนะ",
+            body: "หลังจากครบทุกรอบ ผู้ที่มีคะแนนมากที่สุดชนะ คะแนนมาจากการรอดชีวิต (คนสุดท้าย = +1) และการชนะ challenge (+1 แต่ละครั้ง) เป้าหมาย: อยู่นานและ challenge อย่างฉลาด!",
+          },
+        ],
+      },
+    },
+  },
+
   "hues-and-cues": {
     name: { en: "Hues & Cues", th: "Hues & Cues" },
     cover: "/images/games/hues-and-cues/cover.png",

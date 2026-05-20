@@ -15,6 +15,7 @@ import { hncConfig } from "./hues-and-cues";
 import { betrayalConfig } from "./betrayal";
 import { werewolfConfig } from "./werewolf";
 import { secretHitlerConfig } from "./secret-hitler";
+import { ktcConfig } from "./ktc";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
   [sotConfig.id]:           sotConfig,
   [hncConfig.id]:           hncConfig,
   [betrayalConfig.id]:      betrayalConfig,
+  [ktcConfig.id]:           ktcConfig,
   [werewolfConfig.id]:      werewolfConfig,
   [secretHitlerConfig.id]:  secretHitlerConfig,
 };
