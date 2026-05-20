@@ -1740,7 +1740,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       const candidate = pool[startIdx % pool.length];
       const tileDef = TILE_DEFINITIONS.find(t => t.id === candidate);
       if (tileDef) {
-        placed = buildPlacedTile(candidate, floor, x, y, 0);
+        placed = buildPlacedTile(candidate, floor, x, y, "north", myPlayerId ?? "system");
         tileId = candidate;
         newPool = pool.filter((_, i) => i !== (startIdx % pool.length));
       }
