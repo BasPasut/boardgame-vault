@@ -129,6 +129,7 @@ export interface BetrayalGameState {
 
   locked_doors: string[];      // "floor,x,y,dir" — one side of a locked door connection
   restrained_players: string[]; // player IDs who lose 1 Speed this turn (rope effect)
+  chilled_players: string[];   // player IDs hit by Cold Spot — lose 1 Speed until their next turn
 
   player_states: Record<string, PlayerGameState>;
   event_log: GameEvent[];
