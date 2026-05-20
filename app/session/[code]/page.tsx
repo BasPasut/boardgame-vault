@@ -1474,14 +1474,14 @@ function SessionRoom() {
   // ---------- DAY ----------
   if (phase === "day") {
     return (
-      <div className="min-h-screen" style={{ background: "linear-gradient(180deg, #1a0f00 0%, #0d0a1a 100%)" }}>
-        <div className="sticky top-0 z-20" style={{ background: "rgba(26,15,0,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
+      <div className="min-h-screen" style={{ background: "linear-gradient(180deg, #3d1e00 0%, #1e0d00 100%)" }}>
+        <div className="sticky top-0 z-20" style={{ background: "rgba(40,20,0,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(200,140,30,0.2)" }}>
           <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
             <div>
-              <div className="text-xs tracking-widest mb-0.5" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              <div className="text-xs tracking-widest mb-0.5" style={{ color: "#c8930a", fontFamily: "var(--font-gothic)" }}>
                 SHADOWS OVER THORNWICK
               </div>
-              <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>☀️ {t.day} {day}</h2>
+              <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#fde68a" }}>☀️ {t.day} {day}</h2>
             </div>
             <div className="flex items-center gap-2">
               {myRole && !isHost && (
@@ -1490,23 +1490,23 @@ function SessionRoom() {
                 </button>
               )}
               <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg flex items-center justify-center flex-shrink-0" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
-              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#c8930a" : "#8a5c10"}}>EN</span><span style={{color:"#6a3a08"}}> / </span><span style={{color: lang==="th" ? "#c8930a" : "#8a5c10"}}>TH</span></button>
             </div>
           </div>
         </div>
         <div className="max-w-2xl mx-auto px-6 py-6">
-          <p className="mb-6 italic" style={{ color: "#7a6a5a" }}>{t.discuss}</p>
+          <p className="mb-6 italic" style={{ color: "#c8930a" }}>{t.discuss}</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
             {players.filter((p) => !p.isStoryteller).map((p) => {
               const role = isHost ? getRoleById(roleAssignments[p.id]) : null;
               const isMe = p.id === myPlayerId;
               return (
-                <div key={p.id} className={`gothic-card rounded-xl p-3 text-center ${!p.isAlive ? "opacity-40" : ""} ${isMe ? "ring-1 ring-yellow-600/50" : ""}`}>
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-2" style={{ background: !p.isAlive ? "rgba(90,74,58,0.3)" : role?.team === "evil" ? "rgba(139,26,26,0.3)" : "rgba(74,111,165,0.3)", color: "#e8d5b0" }}>
+                <div key={p.id} className={`sot-day-card rounded-xl p-3 text-center ${!p.isAlive ? "opacity-40" : ""} ${isMe ? "ring-1 ring-yellow-600/50" : ""}`}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-2" style={{ background: !p.isAlive ? "rgba(90,60,10,0.3)" : role?.team === "evil" ? "rgba(139,26,26,0.3)" : "rgba(200,140,30,0.25)", color: "#fde68a" }}>
                     {!p.isAlive ? "💀" : p.name[0].toUpperCase()}
                   </div>
-                  <div className="text-sm font-medium" style={{ color: p.isAlive ? "#e8d5b0" : "#5a4a3a" }}>{p.name}{isMe ? " ★" : ""}</div>
+                  <div className="text-sm font-medium" style={{ color: p.isAlive ? "#fde68a" : "#8a5c10" }}>{p.name}{isMe ? " ★" : ""}</div>
                   {isHost && role && <div className="text-xs mt-1" style={{ color: role.team === "evil" ? "#ff8080" : "#80b0ff" }}>{role.name[lang]}</div>}
                   <div className="text-xs mt-1" style={{ color: p.isAlive ? "#5a9a5a" : "#9a5a5a" }}>{p.isAlive ? t.alive : t.dead}</div>
                   {isHost && (
@@ -1521,11 +1521,11 @@ function SessionRoom() {
 
           {isHost ? (
             <div className="space-y-3">
-              <button onClick={endDay} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+              <button onClick={endDay} className="btn-sot-day-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
                 🌙 {t.endDay}
               </button>
-              <div className="gothic-card rounded-xl p-4">
-                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
+              <div className="sot-day-card rounded-xl p-4">
+                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#8a5c10", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
                     ☀️ {t.goodWins}
@@ -1537,13 +1537,13 @@ function SessionRoom() {
               </div>
             </div>
           ) : (
-            <p className="text-center text-sm italic" style={{ color: "#5a4a3a" }}>{t.waitingForHost}</p>
+            <p className="text-center text-sm italic" style={{ color: "#8a5c10" }}>{t.waitingForHost}</p>
           )}
         </div>
         {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
         {confirmWinner && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
-            <div className="gothic-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
+            <div className="sot-day-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
               <div className="text-5xl mb-3">{confirmWinner === "good" ? "☀️" : "😈"}</div>
               <h3 className="text-xl font-black mb-1" style={{ fontFamily: "var(--font-gothic)", color: confirmWinner === "good" ? "#80b0ff" : "#ff8080" }}>
                 {confirmWinner === "good" ? t.goodWins : t.evilWins}
@@ -1577,10 +1577,10 @@ function SessionRoom() {
   // ---------- NIGHT ----------
   if (phase === "night") {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(180deg, #000510 0%, #0d0a1a 100%)" }}>
-        <div className="sticky top-0 z-20" style={{ background: "rgba(0,5,16,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
+      <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(180deg, #000814 0%, #02040e 100%)" }}>
+        <div className="sticky top-0 z-20" style={{ background: "rgba(0,4,12,0.98)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(80,120,200,0.15)" }}>
           <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
-            <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>🌙 {t.night} {day}</h2>
+            <h2 className="text-2xl font-black" style={{ fontFamily: "var(--font-gothic)", color: "#a0c0ff" }}>🌙 {t.night} {day}</h2>
             <div className="flex items-center gap-2">
               {myRole && !isHost && (
                 <button onClick={() => setShowMyRole(true)} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0">
@@ -1588,42 +1588,42 @@ function SessionRoom() {
                 </button>
               )}
               <button onClick={toggleMute} className="btn-gothic-secondary px-3 py-1.5 rounded-lg flex items-center justify-center flex-shrink-0" style={{ opacity: muted ? 0.5 : 1 }}>{muted ? <AudioOffIcon /> : <AudioOnIcon />}</button>
-              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#d4af37" : "#5a4a3a"}}>EN</span><span style={{color:"#3a2a1a"}}> / </span><span style={{color: lang==="th" ? "#d4af37" : "#5a4a3a"}}>TH</span></button>
+              <button onClick={() => setLang(lang === "en" ? "th" : "en")} className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"><span style={{color: lang==="en" ? "#a0c0ff" : "#3a5080"}}>EN</span><span style={{color:"#2a3a58"}}> / </span><span style={{color: lang==="th" ? "#a0c0ff" : "#3a5080"}}>TH</span></button>
             </div>
           </div>
         </div>
         <div className="max-w-2xl mx-auto px-6 py-6 w-full">
-          <div className="text-center py-8 mb-6 gothic-card rounded-2xl">
+          <div className="text-center py-8 mb-6 sot-night-card rounded-2xl">
             <div className="text-5xl mb-3">🌕</div>
-            <p className="text-lg italic" style={{ color: "#7a6a5a" }}>
+            <p className="text-lg italic" style={{ color: "#5080b0" }}>
               {lang === "en" ? "The village sleeps..." : "หมู่บ้านหลับใหล..."}
             </p>
           </div>
 
           {isHost ? (
             <>
-              <div className="text-sm mb-4 tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>{t.wakeOrder}</div>
+              <div className="text-sm mb-4 tracking-widest uppercase" style={{ color: "#6090d0", fontFamily: "var(--font-gothic)" }}>{t.wakeOrder}</div>
               <div className="space-y-2 mb-6">
                 {nightWakeOrder.map((role, idx) => (
-                  <div key={role.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${idx === nightIndex ? "border" : "opacity-50"}`} style={{ background: idx === nightIndex ? "rgba(212,175,55,0.1)" : "rgba(45,27,78,0.3)", borderColor: idx < nightIndex ? "rgba(90,74,58,0.3)" : idx === nightIndex ? "rgba(212,175,55,0.6)" : "transparent" }}>
-                    <span className="text-sm font-mono w-5" style={{ color: "#5a4a3a" }}>{idx + 1}</span>
-                    <span className="font-medium" style={{ color: idx === nightIndex ? "#e8d5b0" : "#7a6a5a", fontFamily: "var(--font-gothic)" }}>{role.name[lang]}</span>
+                  <div key={role.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${idx === nightIndex ? "border" : "opacity-50"}`} style={{ background: idx === nightIndex ? "rgba(80,120,200,0.15)" : "rgba(4,14,32,0.5)", borderColor: idx < nightIndex ? "rgba(40,60,100,0.4)" : idx === nightIndex ? "rgba(100,160,255,0.5)" : "transparent" }}>
+                    <span className="text-sm font-mono w-5" style={{ color: "#3a5080" }}>{idx + 1}</span>
+                    <span className="font-medium" style={{ color: idx === nightIndex ? "#a0c0ff" : "#506090", fontFamily: "var(--font-gothic)" }}>{role.name[lang]}</span>
                     <span className="text-xs ml-auto" style={{ color: role.team === "evil" ? "#c08080" : "#8090c0" }}>{role.type}</span>
                     {idx < nightIndex && <span className="text-green-600">✓</span>}
                   </div>
                 ))}
               </div>
               {nightIndex < nightWakeOrder.length - 1 ? (
-                <button onClick={nextNightRole} className="btn-gothic-primary w-full py-3 rounded-xl font-semibold">
+                <button onClick={nextNightRole} className="btn-sot-night-primary w-full py-3 rounded-xl font-semibold">
                   Next → {nightWakeOrder[nightIndex + 1]?.name[lang]}
                 </button>
               ) : (
-                <button onClick={endNight} className="btn-gothic-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
+                <button onClick={endNight} className="btn-sot-night-primary w-full py-4 rounded-xl font-bold" style={{ fontFamily: "var(--font-gothic)" }}>
                   ☀️ {t.endNight}
                 </button>
               )}
-              <div className="gothic-card rounded-xl p-4 mt-3">
-                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
+              <div className="sot-night-card rounded-xl p-4 mt-3">
+                <p className="text-xs tracking-widest uppercase text-center mb-3" style={{ color: "#3a5080", fontFamily: "var(--font-gothic)" }}>{t.declareWinner}</p>
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmWinner("good")} className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all hover:opacity-90" style={{ background: "rgba(74,111,165,0.3)", border: "1px solid rgba(74,111,165,0.5)", color: "#80b0ff" }}>
                     ☀️ {t.goodWins}
@@ -1638,29 +1638,29 @@ function SessionRoom() {
             /* Non-host night view: atmospheric waiting screen with role reminder */
             <div className="space-y-4">
               {/* Atmospheric moon card */}
-              <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(0,5,16,0.7)", border: "1px solid rgba(212,175,55,0.1)" }}>
-                <div className="text-6xl mb-3" style={{ filter: "drop-shadow(0 0 16px rgba(212,175,55,0.4))" }}>🌕</div>
-                <p className="text-lg italic mb-1" style={{ color: "#7a6a5a", fontFamily: "var(--font-gothic)" }}>
+              <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(0,4,12,0.8)", border: "1px solid rgba(80,120,200,0.15)" }}>
+                <div className="text-6xl mb-3" style={{ filter: "drop-shadow(0 0 16px rgba(80,140,255,0.4))" }}>🌕</div>
+                <p className="text-lg italic mb-1" style={{ color: "#5080b0", fontFamily: "var(--font-gothic)" }}>
                   {lang === "en" ? "Close your eyes…" : "หลับตา..."}
                 </p>
-                <p className="text-xs" style={{ color: "#3a2a1a" }}>
+                <p className="text-xs" style={{ color: "#2a4060" }}>
                   {lang === "en" ? "The Storyteller will wake you when it's your turn." : "Storyteller จะปลุกคุณเมื่อถึงคราว"}
                 </p>
               </div>
 
               {/* Role reminder */}
               {myRole && (
-                <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "rgba(45,27,78,0.4)", border: "1px solid rgba(212,175,55,0.15)" }}>
+                <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "rgba(4,14,32,0.7)", border: "1px solid rgba(80,120,200,0.2)" }}>
                   <div className="text-2xl flex-shrink-0">{myRole.team === "evil" ? "😈" : "✨"}</div>
                   <div className="min-w-0">
-                    <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: "#5a4a3a", fontFamily: "var(--font-gothic)" }}>
+                    <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: "#3a5080", fontFamily: "var(--font-gothic)" }}>
                       {lang === "en" ? "Your role" : "บทบาทของคุณ"}
                     </p>
-                    <p className="font-bold truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+                    <p className="font-bold truncate" style={{ color: "#a0c0ff", fontFamily: "var(--font-gothic)" }}>
                       {myRole.name[lang]}
                     </p>
                     {myRole.ability && (
-                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#7a6a5a" }}>
+                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#5080b0" }}>
                         {typeof myRole.ability === "object" ? myRole.ability[lang] : myRole.ability}
                       </p>
                     )}
@@ -1671,7 +1671,7 @@ function SessionRoom() {
                 </div>
               )}
 
-              <p className="text-center text-xs italic py-2" style={{ color: "#3a2a1a" }}>
+              <p className="text-center text-xs italic py-2" style={{ color: "#2a4060" }}>
                 {t.waitingForHost}
               </p>
             </div>
@@ -1680,12 +1680,12 @@ function SessionRoom() {
         {showMyRole && myRole && <MyRoleOverlay role={myRole} lang={lang} onClose={() => setShowMyRole(false)} />}
         {confirmWinner && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
-            <div className="gothic-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
+            <div className="sot-night-card rounded-2xl p-6 w-full max-w-sm text-center animate-slide-up">
               <div className="text-5xl mb-3">{confirmWinner === "good" ? "☀️" : "😈"}</div>
               <h3 className="text-xl font-black mb-1" style={{ fontFamily: "var(--font-gothic)", color: confirmWinner === "good" ? "#80b0ff" : "#ff8080" }}>
                 {confirmWinner === "good" ? t.goodWins : t.evilWins}
               </h3>
-              <p className="text-sm mb-5" style={{ color: "#7a6a5a" }}>
+              <p className="text-sm mb-5" style={{ color: "#5080b0" }}>
                 {lang === "en" ? "End the game and reveal all roles?" : "จบเกมและเปิดเผยบทบาทของทุกคน?"}
               </p>
               <div className="flex gap-3">
@@ -1694,7 +1694,7 @@ function SessionRoom() {
                 </button>
                 <button
                   onClick={() => { declareWinner(confirmWinner); setConfirmWinner(null); }}
-                  className="btn-gothic-primary flex-1 py-2.5 rounded-xl text-sm font-bold"
+                  className="btn-sot-night-primary flex-1 py-2.5 rounded-xl text-sm font-bold"
                   style={{ background: confirmWinner === "good" ? "rgba(74,111,165,0.6)" : undefined, borderColor: confirmWinner === "good" ? "rgba(74,111,165,0.8)" : undefined }}
                 >
                   {lang === "en" ? "Confirm" : "ยืนยัน"}

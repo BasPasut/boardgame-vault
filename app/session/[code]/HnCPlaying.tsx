@@ -17,6 +17,26 @@ import type { Player } from "@/types/game";
 import type { HnCGameState } from "@/lib/games/hues-and-cues/types";
 export type { HnCGameState }; // re-export so existing imports from this file still work
 
+// ── Hues & Cues light-studio theme ──────────────────────────────────────────
+const HNC = {
+  bgPage:      "radial-gradient(ellipse at top, #ede8ff 0%, #f5f3ff 50%, #fafafe 100%)",
+  bgHeader:    "rgba(255,255,255,0.97)",
+  bgCard:      "rgba(255,255,255,0.92)",
+  bgInput:     "rgba(255,255,255,0.9)",
+  bgRevealRow: "rgba(248,246,255,0.8)",
+  borderCard:  "rgba(120,80,220,0.1)",
+  borderHdr:   "rgba(120,80,220,0.12)",
+  borderInput: "rgba(124,58,237,0.25)",
+  shadowCard:  "0 2px 16px rgba(100,60,200,0.06)",
+  textPrim:    "#1a1230",
+  textSec:     "#6b5fa8",
+  textMuted:   "#9d8fc0",
+  textDim:     "#c5bde0",
+  accent:      "#7c3aed",
+  accentLight: "rgba(124,58,237,0.08)",
+  accentBorder:"rgba(124,58,237,0.3)",
+};
+
 interface HnCDbSession {
   code: string;
   game_id: string;
@@ -33,11 +53,11 @@ interface Props {
 
 // ---------- Ring distance label ----------
 function ringLabel(d: number): { text: string; color: string } {
-  if (d === 0) return { text: "🎯 Bull's-eye!", color: "#d4af37" };
+  if (d === 0) return { text: "🎯 Bull's-eye!", color: "#7c3aed" };
   if (d <= 2)  return { text: "Ring 1",         color: "#22c55e" };
   if (d <= 4)  return { text: "Ring 2",         color: "#f59e0b" };
   if (d <= 6)  return { text: "Ring 3",         color: "#6366f1" };
-  return               { text: "Miss",           color: "#5a4a3a" };
+  return               { text: "Miss",           color: HNC.textMuted };
 }
 
 // ---------- Browser warning ----------
@@ -62,9 +82,9 @@ function ChromeWarning({ lang }: { lang: "en" | "th" }) {
     <div
       className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
       style={{
-        background: "rgba(212,175,55,0.08)",
-        border: "1px solid rgba(212,175,55,0.35)",
-        color: "#c8a84a",
+        background: HNC.accentLight,
+        border: `1px solid ${HNC.accentBorder}`,
+        color: HNC.accent,
       }}
     >
       <span className="text-base leading-none mt-0.5 flex-shrink-0">⚠️</span>
@@ -72,7 +92,7 @@ function ChromeWarning({ lang }: { lang: "en" | "th" }) {
       <button
         onClick={() => setShow(false)}
         className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity leading-none"
-        style={{ color: "#c8a84a" }}
+        style={{ color: HNC.accent }}
         aria-label="Dismiss"
       >
         ✕
@@ -114,7 +134,7 @@ function ColorGrid({
           <div
             key={x}
             className="text-center font-mono"
-            style={{ fontSize: "6px", color: "rgba(212,175,55,0.4)", lineHeight: "1" }}
+            style={{ fontSize: "6px", color: HNC.textDim, lineHeight: "1" }}
           >
             {x + 1}
           </div>
@@ -129,7 +149,7 @@ function ColorGrid({
             <div
               key={y}
               className="flex items-center justify-end pr-0.5 font-mono flex-1"
-              style={{ fontSize: "6px", color: "rgba(212,175,55,0.4)", lineHeight: "1" }}
+              style={{ fontSize: "6px", color: HNC.textDim, lineHeight: "1" }}
             >
               {String.fromCharCode(65 + y)}
             </div>
@@ -138,10 +158,10 @@ function ColorGrid({
 
         {/* Board */}
         <div
-          className="flex-1 rounded-lg overflow-hidden shadow-2xl"
+          className="flex-1 rounded-lg overflow-hidden"
           style={{
-            border: "2px solid rgba(212,175,55,0.35)",
-            boxShadow: "0 0 0 1px rgba(0,0,0,0.5), 0 8px 40px rgba(0,0,0,0.7), 0 0 60px rgba(212,175,55,0.05)",
+            border: `2px solid ${HNC.accentBorder}`,
+            boxShadow: "0 0 0 1px rgba(120,80,220,0.06), 0 4px 24px rgba(100,60,200,0.12)",
           }}
         >
           <div
@@ -152,7 +172,7 @@ function ColorGrid({
               gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
               aspectRatio: `${GRID_COLS}/${GRID_ROWS}`,
               gap: "1px",
-              background: "rgba(0,0,0,0.25)",
+              background: "rgba(200,190,230,0.3)",
             }}
           >
             {Array.from({ length: GRID_ROWS }, (_, y) =>
@@ -278,7 +298,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const cueGiver = players.find((p) => p.id === currentCueGiverId);
   const isHost = players.find((p) => p.id === myPlayerId)?.isStoryteller ?? false;
   const myPinColor =
-    PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length] ?? "#d4af37";
+    PIN_COLORS[players.findIndex((p) => p.id === myPlayerId) % PIN_COLORS.length] ?? "#7c3aed";
 
   const nonCueGivers = players.filter((p) => p.id !== currentCueGiverId);
   const guessersCount = nonCueGivers.filter((p) => !!gs.guesses[p.id]).length;
@@ -426,18 +446,18 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
     <div className="flex items-center gap-2">
       <button
         onClick={toggleMute}
-        className="btn-gothic-secondary px-2.5 py-1.5 rounded-lg text-sm flex-shrink-0"
+        className="btn-hnc-secondary px-2.5 py-1.5 rounded-lg text-sm flex-shrink-0"
         title={muted ? "Unmute" : "Mute"}
       >
         {muted ? "🔇" : "🔊"}
       </button>
       <button
         onClick={() => setLang(lang === "en" ? "th" : "en")}
-        className="btn-gothic-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"
+        className="btn-hnc-secondary px-3 py-1.5 rounded-lg text-xs flex-shrink-0"
       >
-        <span style={{ color: lang === "en" ? "#d4af37" : "#5a4a3a" }}>EN</span>
-        <span style={{ color: "#3a2a1a" }}> / </span>
-        <span style={{ color: lang === "th" ? "#d4af37" : "#5a4a3a" }}>TH</span>
+        <span style={{ color: lang === "en" ? HNC.accent : HNC.textMuted }}>EN</span>
+        <span style={{ color: HNC.textDim }}> / </span>
+        <span style={{ color: lang === "th" ? HNC.accent : HNC.textMuted }}>TH</span>
       </button>
     </div>
   );
@@ -449,26 +469,26 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
     const winners = sorted.filter((p) => (gs.scores[p.id] ?? 0) === topScoreVal);
 
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}>
-        <div className="sticky top-0 z-20" style={{ background: "rgba(13,10,26,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
+      <div className="min-h-screen flex flex-col" style={{ background: HNC.bgPage }}>
+        <div className="sticky top-0 z-20" style={{ background: HNC.bgHeader, backdropFilter: "blur(8px)", borderBottom: `1px solid ${HNC.borderHdr}` }}>
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-            <span className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)", color: "#d4af37" }}>Hues & Cues</span>
+            <span className="text-sm font-bold" style={{ fontFamily: "var(--font-gothic)", color: HNC.accent }}>Hues & Cues</span>
             <HeaderRight />
           </div>
         </div>
         <div className="max-w-lg mx-auto px-4 py-8 w-full">
           <div className="text-center mb-8">
             <div className="text-6xl mb-4">🎨</div>
-            <h1 className="text-3xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
+            <h1 className="text-3xl font-black mb-2" style={{ fontFamily: "var(--font-gothic)", color: HNC.textPrim }}>
               {winners.length > 1 ? t.tie : winners[0]?.name}
             </h1>
-            <p className="text-sm" style={{ color: "#d4af37" }}>
+            <p className="text-sm" style={{ color: HNC.accent }}>
               {winners.length === 1 ? t.winner : ""}
             </p>
           </div>
 
-          <div className="gothic-card rounded-2xl p-6 mb-6">
-            <p className="text-xs tracking-widest uppercase mb-4" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+          <div className="hnc-card rounded-2xl p-6 mb-6">
+            <p className="text-xs tracking-widest uppercase mb-4" style={{ color: HNC.accent, fontFamily: "var(--font-gothic)" }}>
               {t.totalScores}
             </p>
             <div className="space-y-2">
@@ -476,25 +496,25 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 const score = gs.scores[p.id] ?? 0;
                 const pct = scoreToWin > 0 ? Math.min(100, (score / scoreToWin) * 100) : 100;
                 return (
-                  <div key={p.id} className="rounded-xl overflow-hidden" style={{ background: i === 0 ? "rgba(212,175,55,0.1)" : "rgba(45,27,78,0.4)" }}>
+                  <div key={p.id} className="rounded-xl overflow-hidden" style={{ background: i === 0 ? "rgba(124,58,237,0.08)" : "rgba(248,246,255,0.6)" }}>
                     <div className="flex items-center gap-3 px-4 py-3">
-                      <span className="text-sm w-5 flex-shrink-0" style={{ color: "#5a4a3a" }}>#{i + 1}</span>
+                      <span className="text-sm w-5 flex-shrink-0" style={{ color: HNC.textMuted }}>#{i + 1}</span>
                       <div
                         className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                         style={{ background: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length] + "40", color: PIN_COLORS[players.indexOf(p) % PIN_COLORS.length] }}
                       >
                         {p.name[0].toUpperCase()}
                       </div>
-                      <span className="flex-1 text-sm truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#a08060" }}>
+                      <span className="flex-1 text-sm truncate" style={{ color: p.id === myPlayerId ? HNC.textPrim : HNC.textSec }}>
                         {p.name}{p.id === myPlayerId ? " ★" : ""}
                       </span>
-                      <span className="font-bold text-base flex-shrink-0" style={{ color: i === 0 ? "#d4af37" : "#e8d5b0" }}>
+                      <span className="font-bold text-base flex-shrink-0" style={{ color: i === 0 ? HNC.accent : HNC.textPrim }}>
                         {score} {t.pts}
                       </span>
                     </div>
                     {scoreToWin > 0 && (
-                      <div style={{ height: "3px", background: "rgba(0,0,0,0.3)" }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: i === 0 ? "#d4af37" : PIN_COLORS[players.indexOf(p) % PIN_COLORS.length], transition: "width 0.6s ease" }} />
+                      <div style={{ height: "3px", background: "rgba(200,190,230,0.3)" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: i === 0 ? HNC.accent : PIN_COLORS[players.indexOf(p) % PIN_COLORS.length], transition: "width 0.6s ease" }} />
                       </div>
                     )}
                   </div>
@@ -502,7 +522,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
               })}
             </div>
             {scoreToWin > 0 && (
-              <p className="text-center text-xs mt-3 italic" style={{ color: "#5a4a3a" }}>
+              <p className="text-center text-xs mt-3 italic" style={{ color: HNC.textMuted }}>
                 {t.goal}: {scoreToWin} {t.pts}
               </p>
             )}
@@ -511,14 +531,14 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
           <div className="flex gap-3">
             <Link
               href="/session/create?game=hues-and-cues"
-              className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold text-lg text-center no-underline block"
+              className="btn-hnc-primary flex-1 py-4 rounded-xl font-bold text-lg text-center no-underline block"
               style={{ fontFamily: "var(--font-gothic)" }}
             >
               🎨 {t.playAgain}
             </Link>
             <Link
               href="/"
-              className="btn-gothic-secondary px-5 py-4 rounded-xl font-bold text-base text-center no-underline flex-shrink-0"
+              className="btn-hnc-secondary px-5 py-4 rounded-xl font-bold text-base text-center no-underline flex-shrink-0"
               style={{ fontFamily: "var(--font-gothic)" }}
             >
               {t.back}
@@ -535,26 +555,26 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
   const isLastRound = gs.total_rounds > 0 && gs.round >= gs.total_rounds;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0d0a1a" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: HNC.bgPage }}>
       {/* Sticky header */}
-      <div className="sticky top-0 z-20" style={{ background: "rgba(13,10,26,0.97)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(212,175,55,0.15)" }}>
+      <div className="sticky top-0 z-20" style={{ background: HNC.bgHeader, backdropFilter: "blur(8px)", borderBottom: `1px solid ${HNC.borderHdr}` }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="min-w-0">
-            <p className="text-xs truncate" style={{ color: "#5a4a3a" }}>
+            <p className="text-xs truncate" style={{ color: HNC.textMuted }}>
               Hues &amp; Cues · {t.round} {gs.round}{gs.total_rounds > 0 ? ` ${t.of} ${gs.total_rounds}` : ""}
             </p>
-            <p className="text-sm font-bold truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
+            <p className="text-sm font-bold truncate" style={{ color: HNC.textPrim, fontFamily: "var(--font-gothic)" }}>
               {cueGiver?.name} 🎨
             </p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Score progress pill */}
             {scoreToWin > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ background: "rgba(45,27,78,0.6)", border: "1px solid rgba(212,175,55,0.15)" }}>
-                <span style={{ color: "#5a4a3a" }}>{t.goal}:</span>
-                <span style={{ color: "#d4af37" }}>{topScore}</span>
-                <span style={{ color: "#3a2a1a" }}>/</span>
-                <span style={{ color: "#5a4a3a" }}>{scoreToWin}</span>
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ background: HNC.accentLight, border: `1px solid ${HNC.borderCard}` }}>
+                <span style={{ color: HNC.textMuted }}>{t.goal}:</span>
+                <span style={{ color: HNC.accent }}>{topScore}</span>
+                <span style={{ color: HNC.textDim }}>/</span>
+                <span style={{ color: HNC.textMuted }}>{scoreToWin}</span>
               </div>
             )}
             <HeaderRight />
@@ -563,8 +583,8 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* Score progress bar */}
         {scoreToWin > 0 && (
-          <div style={{ height: "2px", background: "rgba(45,27,78,0.8)" }}>
-            <div style={{ height: "100%", width: `${Math.min(100, (topScore / scoreToWin) * 100)}%`, background: "linear-gradient(to right, #4a3a7a, #d4af37)", transition: "width 0.5s ease" }} />
+          <div style={{ height: "2px", background: "rgba(200,190,230,0.3)" }}>
+            <div style={{ height: "100%", width: `${Math.min(100, (topScore / scoreToWin) * 100)}%`, background: "linear-gradient(to right, #a78bfa, #7c3aed)", transition: "width 0.5s ease" }} />
           </div>
         )}
       </div>
@@ -579,9 +599,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 key={i}
                 className="px-4 py-2 rounded-full font-black text-lg"
                 style={{
-                  background: "rgba(212,175,55,0.12)",
-                  border: "1px solid rgba(212,175,55,0.45)",
-                  color: "#e8d5b0",
+                  background: HNC.accentLight,
+                  border: `1px solid ${HNC.accentBorder}`,
+                  color: HNC.textPrim,
                   fontFamily: "var(--font-gothic)",
                   letterSpacing: "0.02em",
                 }}
@@ -615,9 +635,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 key={p.id}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs"
                 style={{
-                  background: "rgba(13,10,26,0.7)",
-                  border: `1px solid ${hasGuessed && !isCueGiver ? pinColor + "80" : "rgba(90,74,58,0.3)"}`,
-                  color: hasGuessed || isCueGiver ? "#e8d5b0" : "#5a4a3a",
+                  background: "rgba(248,246,255,0.7)",
+                  border: `1px solid ${hasGuessed && !isCueGiver ? pinColor + "80" : HNC.borderCard}`,
+                  color: hasGuessed || isCueGiver ? HNC.textPrim : HNC.textMuted,
                   opacity: isCueGiver ? 0.6 : 1,
                 }}
               >
@@ -625,7 +645,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 {p.name}
                 {isCueGiver && " 🎨"}
                 {hasGuessed && !isCueGiver && " ✓"}
-                <span style={{ color: "#3a2a1a", marginLeft: "2px" }}>· {gs.scores[p.id] ?? 0}</span>
+                <span style={{ color: HNC.textDim, marginLeft: "2px" }}>· {gs.scores[p.id] ?? 0}</span>
               </div>
             );
           })}
@@ -635,26 +655,26 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* GIVING CLUE — cue giver */}
         {gs.sub_phase === "giving-clue" && amICueGiver && (
-          <div className="gothic-card rounded-2xl p-4">
+          <div className="hnc-card rounded-2xl p-4">
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-16 h-16 rounded-xl border-2 shadow-lg flex-shrink-0"
                 style={{
                   backgroundColor: getColor(gs.target.x, gs.target.y),
-                  borderColor: "rgba(212,175,55,0.6)",
+                  borderColor: "rgba(124,58,237,0.4)",
                   boxShadow: `0 0 24px ${getColor(gs.target.x, gs.target.y)}80`,
                 }}
               />
               <div>
-                <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                <p className="text-xs tracking-widest uppercase mb-0.5" style={{ color: HNC.accent, fontFamily: "var(--font-gothic)" }}>
                   {t.targetColor}
                 </p>
-                <p className="text-xs" style={{ color: "#5a4a3a" }}>
+                <p className="text-xs" style={{ color: HNC.textMuted }}>
                   Col {gs.target.x + 1} · Row {String.fromCharCode(65 + gs.target.y)}
                 </p>
               </div>
             </div>
-            <p className="text-xs mb-2" style={{ color: "#7a6a5a" }}>{t.giveClue}</p>
+            <p className="text-xs mb-2" style={{ color: HNC.textSec }}>{t.giveClue}</p>
             <div className="flex gap-2">
               <input
                 value={clueInput}
@@ -663,13 +683,13 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                 placeholder={t.cluePlaceholder}
                 maxLength={30}
                 className="flex-1 px-3 py-2.5 rounded-xl text-sm focus:outline-none"
-                style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.3)", color: "#e8d5b0" }}
+                style={{ background: HNC.bgInput, border: `1px solid ${HNC.borderInput}`, color: HNC.textPrim }}
                 autoFocus
               />
               <button
                 onClick={submitClue}
                 disabled={!clueInput.trim() || submitting}
-                className="btn-gothic-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
+                className="btn-hnc-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
               >
                 {t.submitClue}
               </button>
@@ -679,35 +699,35 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* GIVING CLUE — waiting players */}
         {gs.sub_phase === "giving-clue" && !amICueGiver && (
-          <div className="gothic-card rounded-2xl p-4 text-center">
+          <div className="hnc-card rounded-2xl p-4 text-center">
             <div className="text-3xl mb-2 animate-pulse">🎨</div>
-            <p className="text-sm" style={{ color: "#a08060" }}>
-              {t.cueGiverIs}: <span style={{ color: "#e8d5b0" }}>{cueGiver?.name}</span>
+            <p className="text-sm" style={{ color: HNC.textSec }}>
+              {t.cueGiverIs}: <span style={{ color: HNC.textPrim }}>{cueGiver?.name}</span>
             </p>
-            <p className="text-xs mt-1" style={{ color: "#5a4a3a" }}>{t.waitingForClue}</p>
+            <p className="text-xs mt-1" style={{ color: HNC.textMuted }}>{t.waitingForClue}</p>
           </div>
         )}
 
         {/* GUESSING — cue giver controls */}
         {gs.sub_phase === "guessing" && amICueGiver && (
-          <div className="gothic-card rounded-2xl p-4 space-y-3">
+          <div className="hnc-card rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div
                   className="w-7 h-7 rounded-lg border flex-shrink-0"
-                  style={{ backgroundColor: getColor(gs.target.x, gs.target.y), borderColor: "rgba(212,175,55,0.4)" }}
+                  style={{ backgroundColor: getColor(gs.target.x, gs.target.y), borderColor: HNC.accentBorder }}
                 />
-                <span className="text-xs" style={{ color: "#7a6a5a" }}>
+                <span className="text-xs" style={{ color: HNC.textSec }}>
                   {guessersCount}/{nonCueGivers.length} {t.guessed}
                 </span>
               </div>
               {allGuessed && (
-                <span className="text-xs" style={{ color: "#5a9a5a" }}>{t.allGuessedAuto}</span>
+                <span className="text-xs" style={{ color: "#22c55e" }}>{t.allGuessedAuto}</span>
               )}
             </div>
             {gs.clues.length < 2 && (
               <div>
-                <p className="text-xs mb-1.5" style={{ color: "#5a4a3a" }}>
+                <p className="text-xs mb-1.5" style={{ color: HNC.textMuted }}>
                   {lang === "en" ? "Optional 2nd clue:" : "Clue ที่ 2 (ไม่บังคับ):"}
                 </p>
                 <div className="flex gap-2">
@@ -718,12 +738,12 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                     placeholder={t.cluePlaceholder}
                     maxLength={30}
                     className="flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none"
-                    style={{ background: "rgba(13,10,26,0.8)", border: "1px solid rgba(212,175,55,0.2)", color: "#e8d5b0" }}
+                    style={{ background: HNC.bgInput, border: `1px solid ${HNC.borderInput}`, color: HNC.textPrim }}
                   />
                   <button
                     onClick={submitClue}
                     disabled={!clueInput.trim() || submitting}
-                    className="btn-gothic-secondary px-3 py-2 rounded-xl text-xs whitespace-nowrap disabled:opacity-40"
+                    className="btn-hnc-secondary px-3 py-2 rounded-xl text-xs whitespace-nowrap disabled:opacity-40"
                   >
                     {lang === "en" ? "Add Clue 2" : "ส่ง"}
                   </button>
@@ -732,7 +752,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             )}
             <button
               onClick={triggerReveal}
-              className="btn-gothic-primary w-full py-3 rounded-xl font-bold"
+              className="btn-hnc-primary w-full py-3 rounded-xl font-bold"
               style={{ fontFamily: "var(--font-gothic)" }}
             >
               {t.reveal} →
@@ -742,26 +762,26 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* GUESSING — guesser status */}
         {gs.sub_phase === "guessing" && !amICueGiver && (
-          <div className="gothic-card rounded-2xl p-4 text-center">
-            <p className="text-sm mb-1" style={{ color: "#7a6a5a" }}>
+          <div className="hnc-card rounded-2xl p-4 text-center">
+            <p className="text-sm mb-1" style={{ color: HNC.textSec }}>
               {myGuess ? "✓ " : "○ "}
-              <span style={{ color: myGuess ? "#5a9a5a" : "#e8d5b0" }}>
+              <span style={{ color: myGuess ? "#22c55e" : HNC.textPrim }}>
                 {myGuess ? t.canChange : t.tapToGuess}
               </span>
             </p>
-            <p className="text-xs" style={{ color: "#5a4a3a" }}>
+            <p className="text-xs" style={{ color: HNC.textMuted }}>
               {guessersCount}/{nonCueGivers.length} {t.guessed}
             </p>
             {myPlayerId && (
               <div className="flex items-center justify-center gap-2 mt-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: myPinColor }} />
-                <span className="text-xs" style={{ color: "#5a4a3a" }}>your pin</span>
+                <span className="text-xs" style={{ color: HNC.textMuted }}>your pin</span>
               </div>
             )}
             {allGuessed && (
-              <p className="text-xs mt-2 pt-2" style={{ color: "#5a9a5a", borderTop: "1px solid rgba(90,154,90,0.2)" }}>
+              <p className="text-xs mt-2 pt-2" style={{ color: "#22c55e", borderTop: `1px solid rgba(34,197,94,0.2)` }}>
                 ✓ {t.allGuessedAuto} — {lang === "en" ? "Waiting for" : "รอ"}{" "}
-                <span style={{ color: "#e8d5b0" }}>{cueGiver?.name}</span>{" "}
+                <span style={{ color: HNC.textPrim }}>{cueGiver?.name}</span>{" "}
                 {lang === "en" ? "to reveal..." : "เฉลย..."}
               </p>
             )}
@@ -770,9 +790,9 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
 
         {/* REVEAL */}
         {gs.sub_phase === "reveal" && gs.round_scores && (
-          <div className="gothic-card rounded-2xl p-4 space-y-3">
+          <div className="hnc-card rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs tracking-widest uppercase" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+              <p className="text-xs tracking-widest uppercase" style={{ color: HNC.accent, fontFamily: "var(--font-gothic)" }}>
                 {t.roundScores}
               </p>
               <div className="flex items-center gap-2">
@@ -780,12 +800,12 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                   className="w-8 h-8 rounded-lg border-2 flex-shrink-0 shadow-md"
                   style={{
                     backgroundColor: getColor(gs.target.x, gs.target.y),
-                    borderColor: "rgba(212,175,55,0.5)",
+                    borderColor: HNC.accentBorder,
                     boxShadow: `0 0 12px ${getColor(gs.target.x, gs.target.y)}50`,
                   }}
                 />
-                <div className="text-xs" style={{ color: "#5a4a3a" }}>
-                  <span style={{ color: "#7a6a5a" }}>{t.targetWas}</span>
+                <div className="text-xs" style={{ color: HNC.textMuted }}>
+                  <span style={{ color: HNC.textSec }}>{t.targetWas}</span>
                   {" "}{gs.target.x + 1},{String.fromCharCode(65 + gs.target.y)}
                 </div>
               </div>
@@ -804,7 +824,7 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                   <div
                     key={p.id}
                     className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl"
-                    style={{ background: "rgba(13,10,26,0.6)" }}
+                    style={{ background: HNC.bgRevealRow }}
                   >
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
@@ -812,20 +832,20 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
                     >
                       {p.name[0].toUpperCase()}
                     </div>
-                    <span className="flex-1 truncate" style={{ color: p.id === myPlayerId ? "#e8d5b0" : "#a08060" }}>
+                    <span className="flex-1 truncate" style={{ color: p.id === myPlayerId ? HNC.textPrim : HNC.textSec }}>
                       {p.name}{isCueGiver ? " 🎨" : ""}
                     </span>
                     {!isCueGiver && rl !== null && (
-                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: "rgba(45,27,78,0.6)", color: rl.color }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: HNC.accentLight, color: rl.color }}>
                         {rl.text}
                       </span>
                     )}
-                    <span className="text-xs flex-shrink-0" style={{ color: "#5a4a3a" }}>
+                    <span className="text-xs flex-shrink-0" style={{ color: HNC.textMuted }}>
                       {totalPts}
                     </span>
                     <span
                       className="font-bold w-12 text-right flex-shrink-0"
-                      style={{ color: roundPts > 0 ? "#d4af37" : "#5a4a3a" }}
+                      style={{ color: roundPts > 0 ? HNC.accent : HNC.textMuted }}
                     >
                       +{roundPts}
                     </span>
@@ -837,16 +857,16 @@ export function HnCPlaying({ code, dbSession, players, myPlayerId }: Props) {
             {(amICueGiver || isHost) ? (
               <button
                 onClick={nextRound}
-                className="btn-gothic-primary w-full py-3 rounded-xl font-bold"
+                className="btn-hnc-primary w-full py-3 rounded-xl font-bold"
                 style={{ fontFamily: "var(--font-gothic)" }}
               >
                 {isLastRound ? t.endGame : t.nextRound}
               </button>
             ) : (
-              <p className="text-center text-xs italic py-2" style={{ color: "#5a4a3a" }}>
+              <p className="text-center text-xs italic py-2" style={{ color: HNC.textMuted }}>
                 {lang === "en"
-                  ? <>Waiting for <span style={{ color: "#a08060" }}>{cueGiver?.name}</span> to start the next round…</>
-                  : <>รอ <span style={{ color: "#a08060" }}>{cueGiver?.name}</span> เริ่มรอบถัดไป…</>
+                  ? <>Waiting for <span style={{ color: HNC.textSec }}>{cueGiver?.name}</span> to start the next round…</>
+                  : <>รอ <span style={{ color: HNC.textSec }}>{cueGiver?.name}</span> เริ่มรอบถัดไป…</>
                 }
               </p>
             )}

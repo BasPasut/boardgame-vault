@@ -9,6 +9,31 @@ import type { CommonPlayingProps } from "./gameRegistry";
 import type { KTCGameState, KTCWord, KTCEventEntry } from "@/lib/games/ktc/types";
 import type { Player } from "@/types/game";
 
+// ─── KTC Thai Festival Night theme tokens ─────────────────────────────────────
+const KTC = {
+  bgPage:      "radial-gradient(ellipse at top, #12063a 0%, #07022a 50%, #04011a 100%)",
+  bgHeader:    "rgba(8,2,22,0.96)",
+  bgCard:      "rgba(20,8,60,0.7)",
+  bgInput:     "rgba(10,4,32,0.9)",
+  bgActionBar: "rgba(8,2,22,0.97)",
+  bgScoreRow:  "rgba(20,8,60,0.5)",
+  bgElim:      "rgba(180,20,20,0.08)",
+  borderCard:  "rgba(245,158,11,0.12)",
+  borderHdr:   "rgba(245,158,11,0.15)",
+  borderInput: "rgba(245,158,11,0.4)",
+  borderElim:  "rgba(180,20,20,0.2)",
+  textPrim:    "#fef3c7",   // warm cream
+  textSec:     "#d4a017",   // saffron medium
+  textMuted:   "#7a5a10",   // deep saffron
+  textDim:     "#3a2a05",   // near black
+  accent:      "#f59e0b",   // saffron gold
+  accentRed:   "#ef4444",   // celebration red
+  accentTeal:  "#14b8a6",   // luck teal
+  accentBorder:"rgba(245,158,11,0.4)",
+  glowAccent:  "rgba(245,158,11,0.25)",
+  glowActive:  "0 0 20px rgba(245,158,11,0.4)",
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function uid() {
@@ -140,7 +165,7 @@ function EventLog({ entries, players }: { entries: KTCEventEntry[]; players: Pla
     >
       {entries.slice(-40).map((e) => (
         <div key={e.id} className="text-xs flex gap-2">
-          <span style={{ color: "#3a2a2a", flexShrink: 0 }}>
+          <span style={{ color: KTC.textDim, flexShrink: 0 }}>
             {new Date(e.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </span>
           <span style={{ color: evColor(e.type) }}>{e.message_th}</span>
@@ -573,16 +598,16 @@ export default function KTCPlaying({
     return (
       <div
         className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-        style={{ background: "radial-gradient(ellipse at top, #0d2a1a 0%, #0d0a1a 70%)" }}
+        style={{ background: KTC.bgPage }}
       >
         <div className="text-6xl mb-4 animate-victory-pulse">🏆</div>
         <h1
           className="text-3xl font-black text-center mb-2"
-          style={{ fontFamily: "var(--font-gothic)", color: "#d4af37" }}
+          style={{ fontFamily: "var(--font-gothic)", color: KTC.accent }}
         >
           {gs.winner ? `${playerName(players, gs.winner)} ชนะ!` : "เกมจบแล้ว!"}
         </h1>
-        <p className="text-sm mb-8" style={{ color: "#7a6a5a" }}>คำต้องเชื่อม · {gs.total_rounds} รอบ</p>
+        <p className="text-sm mb-8" style={{ color: KTC.textMuted }}>คำต้องเชื่อม · {gs.total_rounds} รอบ</p>
 
         {/* Scores */}
         <div className="w-full max-w-sm space-y-2 mb-8">
@@ -591,8 +616,8 @@ export default function KTCPlaying({
               key={pid}
               className="flex items-center gap-3 px-4 py-3 rounded-xl"
               style={{
-                background: i === 0 ? "rgba(212,175,55,0.15)" : "rgba(45,27,78,0.4)",
-                border: `1px solid ${i === 0 ? "rgba(212,175,55,0.5)" : "rgba(212,175,55,0.1)"}`,
+                background: i === 0 ? "rgba(212,175,55,0.15)" : KTC.bgCard,
+                border: `1px solid ${i === 0 ? "rgba(212,175,55,0.5)" : KTC.borderCard}`,
               }}
             >
               <span className="text-lg w-6 text-center">
@@ -602,10 +627,10 @@ export default function KTCPlaying({
                 className="w-2 h-6 rounded-full flex-shrink-0"
                 style={{ background: playerColor(gs.all_players, pid) }}
               />
-              <span className="flex-1 font-semibold" style={{ color: "#e8d5b0" }}>
+              <span className="flex-1 font-semibold" style={{ color: KTC.textPrim }}>
                 {playerName(players, pid)}
               </span>
-              <span className="font-bold" style={{ color: i === 0 ? "#d4af37" : "#7a6a5a" }}>
+              <span className="font-bold" style={{ color: i === 0 ? KTC.accent : KTC.textMuted }}>
                 {score} คะแนน
               </span>
             </div>
@@ -629,37 +654,37 @@ export default function KTCPlaying({
     return (
       <div
         className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-        style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}
+        style={{ background: KTC.bgPage }}
       >
         <div className="text-5xl mb-4">🎉</div>
         <h2
           className="text-2xl font-black text-center mb-1"
-          style={{ fontFamily: "var(--font-gothic)", color: "#d4af37" }}
+          style={{ fontFamily: "var(--font-gothic)", color: KTC.accent }}
         >
           รอบที่ {gs.current_round} จบแล้ว!
         </h2>
         {gs.round_winner_id && (
-          <p className="text-lg mb-6" style={{ color: "#e8d5b0" }}>
+          <p className="text-lg mb-6" style={{ color: KTC.textPrim }}>
             🏆 {playerName(players, gs.round_winner_id)} ชนะรอบนี้!
           </p>
         )}
 
         {/* Current scores */}
         <div className="w-full max-w-sm gothic-card rounded-2xl p-5 mb-6">
-          <div className="text-xs tracking-widest uppercase mb-3" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+          <div className="text-xs tracking-widest uppercase mb-3" style={{ color: KTC.accent, fontFamily: "var(--font-gothic)" }}>
             คะแนนสะสม
           </div>
           {Object.entries(gs.scores).sort(([, a], [, b]) => b - a).map(([pid, score]) => (
             <div key={pid} className="flex items-center gap-2 py-1.5">
               <div className="w-2 h-5 rounded-full" style={{ background: playerColor(gs.all_players, pid) }} />
-              <span className="flex-1 text-sm" style={{ color: "#e8d5b0" }}>{playerName(players, pid)}</span>
-              <span className="font-bold text-sm" style={{ color: "#d4af37" }}>{score} pt</span>
+              <span className="flex-1 text-sm" style={{ color: KTC.textPrim }}>{playerName(players, pid)}</span>
+              <span className="font-bold text-sm" style={{ color: KTC.accent }}>{score} pt</span>
             </div>
           ))}
         </div>
 
         {isLastRound ? (
-          <p className="text-sm" style={{ color: "#7a6a5a" }}>กำลังคำนวณผู้ชนะ...</p>
+          <p className="text-sm" style={{ color: KTC.textSec }}>กำลังคำนวณผู้ชนะ...</p>
         ) : isHost ? (
           <button
             onClick={handleNextRound}
@@ -669,7 +694,7 @@ export default function KTCPlaying({
             ▶ รอบที่ {gs.current_round + 1} →
           </button>
         ) : (
-          <p className="text-sm italic" style={{ color: "#5a4a3a" }}>รอ Host เริ่มรอบต่อไป...</p>
+          <p className="text-sm italic" style={{ color: KTC.textMuted }}>รอ Host เริ่มรอบต่อไป...</p>
         )}
       </div>
     );
@@ -688,7 +713,7 @@ export default function KTCPlaying({
     return (
       <div
         className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-        style={{ background: "radial-gradient(ellipse at top, #1a0a2e 0%, #0d0a1a 70%)" }}
+        style={{ background: KTC.bgPage }}
       >
         <div className="text-5xl mb-4">🚨</div>
         <h2
@@ -697,8 +722,8 @@ export default function KTCPlaying({
         >
           Challenge!
         </h2>
-        <p className="text-center mb-1" style={{ color: "#e8d5b0" }}>
-          <span style={{ color: "#d4af37" }}>{challengerName}</span> ท้าทายคำ{" "}
+        <p className="text-center mb-1" style={{ color: KTC.textPrim }}>
+          <span style={{ color: KTC.accent }}>{challengerName}</span> ท้าทายคำ{" "}
           <span
             className="font-black text-xl"
             style={{ color: "#a855f7", fontFamily: "var(--font-gothic)" }}
@@ -706,19 +731,19 @@ export default function KTCPlaying({
             &ldquo;{ch.challenged_word}&rdquo;
           </span>
         </p>
-        <p className="text-sm mb-6" style={{ color: "#7a6a5a" }}>
-          ของ <span style={{ color: "#e8d5b0" }}>{challengedName}</span>
+        <p className="text-sm mb-6" style={{ color: KTC.textSec }}>
+          ของ <span style={{ color: KTC.textPrim }}>{challengedName}</span>
         </p>
 
         {/* Timer */}
         <div className="mb-6">
           <TimerRing secsLeft={challengeSecsLeft} total={60} />
-          <p className="text-xs text-center mt-1" style={{ color: "#5a4a3a" }}>เวลาถกเถียง</p>
+          <p className="text-xs text-center mt-1" style={{ color: KTC.textMuted }}>เวลาถกเถียง</p>
         </div>
 
         {/* Vote buttons */}
         <div className="w-full max-w-sm space-y-3 mb-6">
-          <p className="text-xs text-center mb-3" style={{ color: "#7a6a5a" }}>
+          <p className="text-xs text-center mb-3" style={{ color: KTC.textSec }}>
             โหวตว่าใครถูก — ผู้ที่ได้คะแนนโหวตน้อยกว่าออก
           </p>
           <button
@@ -726,9 +751,9 @@ export default function KTCPlaying({
             disabled={!!myVote || hasVoted}
             className="w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50"
             style={{
-              background: myVote === "challenger" ? "rgba(212,175,55,0.25)" : "rgba(45,27,78,0.5)",
-              border: `2px solid ${myVote === "challenger" ? "#d4af37" : "rgba(212,175,55,0.2)"}`,
-              color: "#d4af37",
+              background: myVote === "challenger" ? "rgba(212,175,55,0.25)" : KTC.bgCard,
+              border: `2px solid ${myVote === "challenger" ? KTC.accent : "rgba(212,175,55,0.2)"}`,
+              color: KTC.accent,
               fontFamily: "var(--font-gothic)",
             }}
           >
@@ -740,7 +765,7 @@ export default function KTCPlaying({
             disabled={!!myVote || hasVoted}
             className="w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50"
             style={{
-              background: myVote === "challenged" ? "rgba(74,111,165,0.25)" : "rgba(45,27,78,0.5)",
+              background: myVote === "challenged" ? "rgba(74,111,165,0.25)" : KTC.bgCard,
               border: `2px solid ${myVote === "challenged" ? "#4a6fa5" : "rgba(74,111,165,0.2)"}`,
               color: "#80b0ff",
               fontFamily: "var(--font-gothic)",
@@ -750,7 +775,7 @@ export default function KTCPlaying({
             <span className="ml-2 text-sm">({voteCount.challenged})</span>
           </button>
 
-          <p className="text-xs text-center" style={{ color: "#5a4a3a" }}>
+          <p className="text-xs text-center" style={{ color: KTC.textMuted }}>
             โหวตแล้ว {Object.keys(ch.votes).length}/{totalVoters} คน
           </p>
         </div>
@@ -779,20 +804,20 @@ export default function KTCPlaying({
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ background: "radial-gradient(ellipse at top, #071a0e 0%, #0d0a1a 70%)" }}
+      style={{ background: KTC.bgPage }}
     >
       {/* ── Header ── */}
       <div
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-        style={{ background: "rgba(13,10,26,0.9)", borderBottom: "1px solid rgba(212,175,55,0.12)" }}
+        style={{ background: KTC.bgHeader, borderBottom: `1px solid ${KTC.borderHdr}` }}
       >
         <div className="flex items-center gap-3">
-          <span className="text-lg font-black" style={{ fontFamily: "var(--font-gothic)", color: "#22c55e" }}>
+          <span className="text-lg font-black" style={{ fontFamily: "var(--font-gothic)", color: KTC.accent }}>
             คำต้องเชื่อม
           </span>
           <span
             className="text-xs px-2 py-0.5 rounded-full"
-            style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e" }}
+            style={{ background: "rgba(245,158,11,0.12)", color: KTC.accent }}
           >
             รอบ {gs.current_round}/{gs.total_rounds}
           </span>
@@ -850,24 +875,24 @@ export default function KTCPlaying({
                     background: isCurrent
                       ? `${col}22`
                       : active
-                      ? "rgba(45,27,78,0.5)"
-                      : "rgba(13,10,26,0.4)",
-                    border: `1.5px solid ${isCurrent ? col : active ? "rgba(212,175,55,0.15)" : "rgba(90,74,58,0.2)"}`,
+                      ? KTC.bgCard
+                      : KTC.bgHeader,
+                    border: `1.5px solid ${isCurrent ? col : active ? KTC.borderHdr : "rgba(90,74,58,0.2)"}`,
                     opacity: active ? 1 : 0.4,
                     boxShadow: isCurrent ? `0 0 10px ${col}55` : undefined,
                   }}
                 >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: active ? col : "#3a2a2a" }} />
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: active ? col : KTC.textDim }} />
                   <span
                     style={{
-                      color: isCurrent ? col : active ? "#e8d5b0" : "#3a2a2a",
+                      color: isCurrent ? col : active ? KTC.textPrim : KTC.textDim,
                       fontWeight: isCurrent ? 700 : 400,
                       textDecoration: active ? undefined : "line-through",
                     }}
                   >
                     {playerName(players, pid)}
                     {pid === myPlayerId && (
-                      <span className="ml-1 text-xs" style={{ color: "#5a4a3a" }}>(you)</span>
+                      <span className="ml-1 text-xs" style={{ color: KTC.textMuted }}>(you)</span>
                     )}
                   </span>
                   {isCurrent && <span className="text-xs">⏱</span>}
@@ -881,10 +906,10 @@ export default function KTCPlaying({
         <div className="gothic-card rounded-xl p-3">
           <div className="text-xs tracking-widest uppercase mb-2 flex justify-between" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
             <span>คำในรอบนี้ ({gs.words.length})</span>
-            <span style={{ color: "#5a4a3a" }}>รีเซ็ตทุกครั้งที่มีคนออก</span>
+            <span style={{ color: KTC.textMuted }}>รีเซ็ตทุกครั้งที่มีคนออก</span>
           </div>
           {gs.words.length === 0 ? (
-            <p className="text-sm text-center py-2" style={{ color: "#3a2a2a" }}>
+            <p className="text-sm text-center py-2" style={{ color: KTC.textDim }}>
               ยังไม่มีคำ — เริ่มกันเลย!
             </p>
           ) : (
@@ -916,11 +941,11 @@ export default function KTCPlaying({
             <div
               key={pid}
               className="flex items-center gap-2 px-3 py-2 rounded-xl"
-              style={{ background: "rgba(45,27,78,0.3)", border: "1px solid rgba(212,175,55,0.08)" }}
+              style={{ background: KTC.bgScoreRow, border: `1px solid ${KTC.borderCard}` }}
             >
               <div className="w-2 h-4 rounded-full flex-shrink-0" style={{ background: playerColor(gs.all_players, pid) }} />
-              <span className="flex-1 text-xs truncate" style={{ color: "#e8d5b0" }}>{playerName(players, pid)}</span>
-              <span className="text-xs font-bold" style={{ color: "#d4af37" }}>{score}pt</span>
+              <span className="flex-1 text-xs truncate" style={{ color: KTC.textPrim }}>{playerName(players, pid)}</span>
+              <span className="text-xs font-bold" style={{ color: KTC.accent }}>{score}pt</span>
             </div>
           ))}
         </div>
@@ -939,26 +964,26 @@ export default function KTCPlaying({
       {/* ── Turn + Input (sticky bottom) ── */}
       <div
         className="flex-shrink-0 px-4 py-4 space-y-3"
-        style={{ background: "rgba(13,10,26,0.95)", borderTop: "1px solid rgba(212,175,55,0.12)" }}
+        style={{ background: KTC.bgActionBar, borderTop: `1px solid ${KTC.borderHdr}` }}
       >
         {/* Turn indicator */}
         {gs.active_players.length > 1 ? (
-          <div className="flex items-center justify-between">
+          <div className={`flex items-center justify-between${isMyTurn ? " ktc-turn-glow" : ""}`}>
             <div>
               {isMyTurn ? (
-                <p className="font-black text-lg" style={{ color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                <p className="font-black text-lg" style={{ color: KTC.accent, fontFamily: "var(--font-gothic)" }}>
                   ✨ ตาของคุณ!
                 </p>
               ) : (
-                <p className="text-sm" style={{ color: "#7a6a5a" }}>
-                  ตาของ <span style={{ color: "#e8d5b0" }}>{currentTurnName}</span>
+                <p className="text-sm" style={{ color: KTC.textSec }}>
+                  ตาของ <span style={{ color: KTC.textPrim }}>{currentTurnName}</span>
                 </p>
               )}
             </div>
             <TimerRing secsLeft={secsLeft} total={gs.turn_duration_s} />
           </div>
         ) : (
-          <p className="text-sm text-center" style={{ color: "#7a6a5a" }}>
+          <p className="text-sm text-center" style={{ color: KTC.textSec }}>
             กำลังรอผล...
           </p>
         )}
@@ -993,8 +1018,8 @@ export default function KTCPlaying({
                   style={{
                     background: speech.isListening
                       ? "rgba(239,68,68,0.25)"
-                      : "rgba(34,197,94,0.15)",
-                    border: `2px solid ${speech.isListening ? "#ef4444" : "rgba(34,197,94,0.4)"}`,
+                      : "rgba(245,158,11,0.15)",
+                    border: `2px solid ${speech.isListening ? "#ef4444" : KTC.borderInput}`,
                     boxShadow: speech.isListening ? "0 0 16px rgba(239,68,68,0.4)" : undefined,
                   }}
                 >
@@ -1014,9 +1039,9 @@ export default function KTCPlaying({
                 disabled={submitting}
                 className="flex-1 px-4 py-3 rounded-xl text-lg font-bold focus:outline-none"
                 style={{
-                  background: "rgba(13,10,26,0.9)",
-                  border: "1.5px solid rgba(34,197,94,0.4)",
-                  color: "#e8d5b0",
+                  background: KTC.bgInput,
+                  border: `1.5px solid ${KTC.borderInput}`,
+                  color: KTC.textPrim,
                 }}
                 autoFocus
               />
@@ -1026,7 +1051,7 @@ export default function KTCPlaying({
                 onClick={() => handleSubmitWord(wordInput)}
                 disabled={submitting || !wordInput.trim()}
                 className="px-5 py-3 rounded-xl font-bold text-base flex-shrink-0 disabled:opacity-40 transition-all"
-                style={{ background: "rgba(34,197,94,0.2)", border: "1.5px solid rgba(34,197,94,0.5)", color: "#22c55e" }}
+                style={{ background: "rgba(245,158,11,0.2)", border: "1.5px solid rgba(245,158,11,0.5)", color: KTC.accent }}
               >
                 {submitting ? "..." : "ส่ง"}
               </button>
@@ -1038,7 +1063,7 @@ export default function KTCPlaying({
         {!isActive && myPlayerId && gs.all_players.includes(myPlayerId) && (
           <div
             className="px-4 py-3 rounded-xl text-sm text-center"
-            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444" }}
+            style={{ background: KTC.bgElim, border: `1px solid ${KTC.borderElim}`, color: KTC.accentRed }}
           >
             คุณออกจากรอบนี้แล้ว ดูเกมต่อไปเลย 👀
           </div>
@@ -1064,7 +1089,7 @@ export default function KTCPlaying({
           <button
             onClick={handleHostSkip}
             className="w-full py-2 rounded-xl text-xs transition-all"
-            style={{ background: "rgba(90,74,58,0.2)", border: "1px solid rgba(90,74,58,0.3)", color: "#5a4a3a" }}
+            style={{ background: "rgba(58,42,5,0.3)", border: `1px solid ${KTC.textDim}`, color: KTC.textMuted }}
           >
             ⏭ Skip (Host) — ข้ามตาปัจจุบัน
           </button>

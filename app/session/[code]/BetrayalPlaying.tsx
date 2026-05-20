@@ -47,6 +47,14 @@ const FLOOR_COLORS: Record<Floor, string> = {
 const STAT_COLOR: Record<string, string> = {
   speed: "#3b82f6", might: "#ef4444", sanity: "#a855f7", knowledge: "#22c55e",
 };
+
+/** Color-codes a stat by how low it is: red when ≤25%, amber at ≤50%, normal above. */
+function statColor(base: string, value: number, max: number): string {
+  const pct = max > 0 ? value / max : 1;
+  if (pct <= 0.25) return "#ef4444";
+  if (pct <= 0.5)  return "#f59e0b";
+  return base;
+}
 const PLAYER_COLORS = [
   "#ef4444","#3b82f6","#22c55e","#f59e0b","#8b5cf6","#ec4899",
 ];
@@ -2548,9 +2556,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
   const showHauntReveal = gs.phase === "haunt" && !hauntDismissed && gs.haunt_number != null;
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden" style={{ background: "#0a0708" }}>
+    <div className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden" style={{ background: "#050308" }}>
       {/* Inject stat-flash keyframes once */}
       <style>{STAT_FLASH_STYLE}</style>
+
+      {/* Haunt crimson wash — subtle horror tint during haunt phase */}
+      {isHaunt && (
+        <div className="betrayal-haunt-wash fixed inset-0 z-0 pointer-events-none" aria-hidden />
+      )}
 
       {/* Haunt reveal overlay */}
       {showHauntReveal && gs.haunt_objectives && (
@@ -3021,7 +3034,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
           {/* Action bar */}
           {isMyTurn && (
-            <div className="flex-shrink-0 flex flex-col gap-2">
+            <div className="flex-shrink-0 flex flex-col gap-2 betrayal-torch-glow rounded-xl p-2">
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleEndTurn}
@@ -3277,10 +3290,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 )}
               </div>
               <div className="space-y-1">
-                <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={STAT_COLOR.speed}      flash={statFlashes.speed} />
-                <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={STAT_COLOR.might}      flash={statFlashes.might} />
-                <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={STAT_COLOR.sanity}     flash={statFlashes.sanity} />
-                <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={STAT_COLOR.knowledge}  flash={statFlashes.knowledge} />
+                <StatBar label="Speed"     value={myState.speed}     max={myChar.speedMax}     color={statColor(STAT_COLOR.speed,     myState.speed,     myChar.speedMax)}     flash={statFlashes.speed} />
+                <StatBar label="Might"     value={myState.might}     max={myChar.mightMax}     color={statColor(STAT_COLOR.might,     myState.might,     myChar.mightMax)}     flash={statFlashes.might} />
+                <StatBar label="Sanity"    value={myState.sanity}    max={myChar.sanityMax}    color={statColor(STAT_COLOR.sanity,    myState.sanity,    myChar.sanityMax)}    flash={statFlashes.sanity} />
+                <StatBar label="Knowledge" value={myState.knowledge}  max={myChar.knowledgeMax} color={statColor(STAT_COLOR.knowledge, myState.knowledge,  myChar.knowledgeMax)} flash={statFlashes.knowledge} />
               </div>
               {myState.items.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">

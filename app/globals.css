@@ -285,3 +285,126 @@ body {
   border-color: rgba(212, 175, 55, 0.8);
   box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PER-GAME THEME CLASSES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Hues & Cues — bright color studio (light theme) ───────────────────── */
+.hnc-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(120, 80, 220, 0.1);
+  box-shadow: 0 2px 16px rgba(100, 60, 200, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+.hnc-card:hover {
+  border-color: rgba(120, 80, 220, 0.22);
+  box-shadow: 0 6px 28px rgba(100, 60, 200, 0.1);
+  transform: translateY(-2px);
+}
+.btn-hnc-primary {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  color: #ffffff;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.06em;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.btn-hnc-primary:hover {
+  box-shadow: 0 4px 24px rgba(124, 58, 237, 0.45);
+  transform: translateY(-1px);
+}
+.btn-hnc-secondary {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  color: #6d28d9;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.06em;
+  transition: all 0.25s ease;
+}
+.btn-hnc-secondary:hover {
+  background: rgba(124, 58, 237, 0.07);
+  border-color: rgba(124, 58, 237, 0.55);
+}
+
+/* ── Shadows Over Thornwick — Day (warm amber village) ─────────────────── */
+.sot-day-card {
+  background: linear-gradient(135deg, rgba(80, 40, 5, 0.75) 0%, rgba(40, 20, 2, 0.9) 100%);
+  border: 1px solid rgba(200, 140, 30, 0.3);
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+.sot-day-card:hover {
+  border-color: rgba(200, 140, 30, 0.6);
+  box-shadow: 0 0 24px rgba(200, 140, 30, 0.15);
+}
+.btn-sot-day-primary {
+  background: linear-gradient(135deg, #b56a00 0%, #7a4400 100%);
+  border: 1px solid rgba(212, 140, 30, 0.5);
+  color: #fde68a;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.1em;
+  transition: all 0.3s ease;
+}
+.btn-sot-day-primary:hover {
+  border-color: rgba(212, 175, 55, 0.9);
+  box-shadow: 0 0 20px rgba(180, 100, 0, 0.5), 0 0 40px rgba(212, 175, 55, 0.2);
+}
+
+/* ── Shadows Over Thornwick — Night (cold moonlit horror) ──────────────── */
+.sot-night-card {
+  background: linear-gradient(135deg, rgba(4, 14, 32, 0.85) 0%, rgba(2, 4, 12, 0.95) 100%);
+  border: 1px solid rgba(80, 120, 200, 0.2);
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+.sot-night-card:hover {
+  border-color: rgba(100, 160, 255, 0.35);
+  box-shadow: 0 0 24px rgba(80, 140, 255, 0.1);
+}
+.btn-sot-night-primary {
+  background: linear-gradient(135deg, #1e3a6e 0%, #0e2040 100%);
+  border: 1px solid rgba(100, 160, 255, 0.4);
+  color: #b0d0ff;
+  font-family: var(--font-gothic);
+  letter-spacing: 0.1em;
+  transition: all 0.3s ease;
+}
+.btn-sot-night-primary:hover {
+  border-color: rgba(160, 200, 255, 0.7);
+  box-shadow: 0 0 20px rgba(60, 120, 255, 0.3);
+}
+
+/* ── Betrayal — enhanced haunted mansion horror ─────────────────────────── */
+.betrayal-torch-glow {
+  box-shadow: 0 -4px 32px rgba(180, 100, 10, 0.18), inset 0 1px 0 rgba(212, 140, 30, 0.1);
+}
+@keyframes torch-flicker {
+  0%, 100% { opacity: 1; }
+  25% { opacity: 0.94; }
+  50% { opacity: 0.97; }
+  75% { opacity: 0.92; }
+}
+.betrayal-haunt-wash {
+  background: radial-gradient(ellipse at center, rgba(100, 0, 0, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ── KTC — Thai festival night party ──────────────────────────────────────── */
+.ktc-word-chip {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+.ktc-word-chip:hover {
+  transform: scale(1.05);
+}
+@keyframes festival-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.3); }
+  50%       { box-shadow: 0 0 28px rgba(245, 158, 11, 0.6); }
+}
+.ktc-turn-glow {
+  animation: festival-pulse 2s ease-in-out infinite;
+}
