@@ -38,8 +38,8 @@ export interface CommonPlayingProps {
 
 import { HnCPlaying } from "./HnCPlaying";
 import BetrayalPlaying from "./BetrayalPlaying";
+import KTCPlaying from "./KTCPlaying";
 // import SoTPlaying from "./SoTPlaying";  ← uncomment when SoTPlaying.tsx is extracted
-// import NewGamePlaying from "./NewGamePlaying";
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
@@ -47,6 +47,6 @@ import BetrayalPlaying from "./BetrayalPlaying";
 export const PLAYING_COMPONENTS: Record<string, ComponentType<any>> = {
   "hues-and-cues":                   HnCPlaying,
   "betrayal-at-house-on-the-hill":   BetrayalPlaying,
+  "kam-tong-chuom":                  KTCPlaying,
   // "shadows-over-thornwick":       SoTPlaying,   ← add when extracted
-  // "new-game-id":                  NewGamePlaying,
 };

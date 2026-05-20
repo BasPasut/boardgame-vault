@@ -372,6 +372,7 @@ function SessionRoom() {
   const [showQR, setShowQR] = useState(false);
   const [showMyRole, setShowMyRole] = useState(false);
   const [hncScoreToWin, setHncScoreToWin] = useState(25);
+  const [ktcRounds, setKtcRounds] = useState(3);
   const [confirmWinner, setConfirmWinner] = useState<"good" | "evil" | null>(null);
 
   // Betrayal character selections (stored in game_state.character_selections)
@@ -661,6 +662,39 @@ function SessionRoom() {
       scores: initialScores,
     };
     await supabase.from("sessions").update({ phase: "playing", game_state: state }).eq("code", code);
+  };
+
+  const handleStartKTC = async () => {
+    if (players.length < 3) return;
+    const allPlayerIds = [...players.map((p) => p.id)].sort(() => Math.random() - 0.5);
+    const initialScores: Record<string, number> = {};
+    players.forEach((p) => { initialScores[p.id] = 0; });
+    const startLog = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+      timestamp: new Date().toISOString(),
+      type: "system" as const,
+      message_th: `เกมเริ่มต้นแล้ว! รอบที่ 1/${ktcRounds}`,
+      message_en: `Game started! Round 1/${ktcRounds}`,
+    };
+    await supabase.from("sessions").update({
+      phase: "playing",
+      game_state: {
+        phase: "playing",
+        total_rounds: ktcRounds,
+        current_round: 1,
+        all_players: allPlayerIds,
+        active_players: allPlayerIds,
+        current_turn_index: 0,
+        turn_started_at: new Date().toISOString(),
+        turn_duration_s: 8,
+        words: [],
+        scores: initialScores,
+        challenge: null,
+        round_winner_id: null,
+        winner: null,
+        event_log: [startLog],
+      },
+    }).eq("code", code);
   };
 
   const handleSelectBetrayalCharacter = async (charId: string) => {
@@ -1135,7 +1169,77 @@ function SessionRoom() {
             </div>
           )}
 
-          {isHost && dbSession?.game_id !== "hues-and-cues" && dbSession?.game_id !== "betrayal-at-house-on-the-hill" && (() => {
+          {/* ─── KTC: iOS Safari warning (all players) ─── */}
+          {dbSession?.game_id === "kam-tong-chuom" && joined && (() => {
+            const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+            const isIOS = /iPad|iPhone|iPod/.test(ua);
+            const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+            const showWarn = isIOS && !isSafari;
+            if (!showWarn) return null;
+            return (
+              <div className="gothic-card rounded-xl p-4 flex items-start gap-3"
+                style={{ border: "1px solid rgba(234,179,8,0.4)", background: "rgba(234,179,8,0.06)" }}>
+                <span className="text-2xl flex-shrink-0">⚠️</span>
+                <div>
+                  <p className="font-bold text-sm" style={{ color: "#eab308" }}>
+                    {lang === "en" ? "Use Safari for microphone" : "ใช้ Safari เพื่อฟีเจอร์ไมค์"}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#7a6a5a" }}>
+                    {lang === "en"
+                      ? "Chrome on iOS doesn't support Web Speech API. Switch to Safari to use the mic button. Text input still works in any browser."
+                      : "Chrome บน iOS ไม่รองรับ Web Speech API กรุณาเปลี่ยนไปใช้ Safari เพื่อใช้ปุ่มไมค์ พิมพ์ข้อความยังใช้ได้ในทุกเบราว์เซอร์"}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ─── KTC HOST START ─── */}
+          {isHost && dbSession?.game_id === "kam-tong-chuom" && (
+            <div className="space-y-3">
+              <div className="gothic-card rounded-2xl p-5">
+                <div className="text-xs tracking-widest uppercase mb-3" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+                  {lang === "en" ? "Number of Rounds" : "จำนวนรอบ"}
+                </div>
+                <div className="flex gap-2">
+                  {[3, 5, 7].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setKtcRounds(r)}
+                      className="flex-1 py-2 rounded-xl text-sm font-bold transition-all"
+                      style={{
+                        background: ktcRounds === r ? "rgba(34,197,94,0.2)" : "rgba(45,27,78,0.4)",
+                        border: `1px solid ${ktcRounds === r ? "rgba(34,197,94,0.6)" : "rgba(212,175,55,0.15)"}`,
+                        color: ktcRounds === r ? "#22c55e" : "#7a6a5a",
+                      }}
+                    >
+                      {r} {lang === "en" ? "rounds" : "รอบ"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs mt-2" style={{ color: "#5a4a3a" }}>
+                  {lang === "en"
+                    ? "Each round: eliminate until 1 player remains (+1 pt). Most points wins."
+                    : "แต่ละรอบ: ออกจนเหลือ 1 คน (+1 คะแนน) คนที่ได้คะแนนมากสุดชนะ"}
+                </p>
+              </div>
+              <button onClick={handleAddDemoPlayers} className="btn-gothic-secondary w-full py-3 rounded-xl text-sm">
+                + Add Demo Players (for testing)
+              </button>
+              <button
+                onClick={handleStartKTC}
+                disabled={players.length < 3}
+                className="btn-gothic-primary w-full py-4 rounded-xl text-lg font-bold disabled:opacity-40"
+                style={{ fontFamily: "var(--font-gothic)" }}
+              >
+                {players.length < 3
+                  ? (lang === "en" ? "Need at least 3 players" : "ต้องการผู้เล่นอย่างน้อย 3 คน")
+                  : `🎙️ ${lang === "en" ? "Start Game" : "เริ่มเกม"}`}
+              </button>
+            </div>
+          )}
+
+          {isHost && dbSession?.game_id !== "hues-and-cues" && dbSession?.game_id !== "betrayal-at-house-on-the-hill" && dbSession?.game_id !== "kam-tong-chuom" && (() => {
             const nonSTCount = players.filter(p => !p.isStoryteller).length;
             const rolesValid = !customRoleIds || customRoleIds.length === nonSTCount;
             const typeColors: Record<string, string> = { townsfolk: "#80b0ff", outsider: "#c0a0ff", minion: "#ffb080", demon: "#ff6060" };
