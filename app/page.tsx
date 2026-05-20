@@ -87,7 +87,7 @@ type Translations = {
   playNow: string; players: string; gamesCount: (n: number) => string;
 };
 
-function GameCardStandard({ game, lang, t }: { game: GameConfig; lang: Lang; t: Translations }) {
+function GameCardStandard({ game, lang, t, featured = false }: { game: GameConfig; lang: Lang; t: Translations; featured?: boolean }) {
   const cat = CATEGORIES.find((c) => c.id === game.category)!;
   return (
     <div
@@ -95,7 +95,7 @@ function GameCardStandard({ game, lang, t }: { game: GameConfig; lang: Lang; t: 
       style={game.available ? { boxShadow: `0 0 0 1px ${cat.border}` } : undefined}
     >
       {/* Image */}
-      <div className={`relative h-44 bg-gradient-to-br ${game.cardTheme} flex-shrink-0 overflow-hidden`}>
+      <div className={`relative ${featured ? "h-56" : "h-44"} bg-gradient-to-br ${game.cardTheme} flex-shrink-0 overflow-hidden`}>
         {game.coverImage ? (
           <Image
             src={game.coverImage}
@@ -175,77 +175,6 @@ function GameCardStandard({ game, lang, t }: { game: GameConfig; lang: Lang; t: 
   );
 }
 
-/** Wide landscape card — used when a category has only one game */
-function GameCardFeatured({ game, lang, t }: { game: GameConfig; lang: Lang; t: Translations }) {
-  const cat = CATEGORIES.find((c) => c.id === game.category)!;
-  return (
-    <div
-      className="gothic-card rounded-2xl overflow-hidden group flex flex-col sm:flex-row transition-all duration-300"
-      style={{ boxShadow: `0 0 0 1px ${cat.border}` }}
-    >
-      {/* Image — full width on mobile, 40% on desktop */}
-      <div className={`relative h-48 sm:h-auto sm:w-2/5 flex-shrink-0 bg-gradient-to-br ${game.cardTheme} overflow-hidden`}>
-        {game.coverImage ? (
-          <Image
-            src={game.coverImage}
-            alt={game.name[lang]}
-            fill
-            className="object-cover opacity-65 group-hover:opacity-80 transition-opacity duration-500"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-7xl opacity-10">{cat.icon}</span>
-          </div>
-        )}
-        <div className="absolute inset-0 sm:hidden" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65), transparent 60%)" }} />
-        <div className="absolute inset-0 hidden sm:block" style={{ background: "linear-gradient(to right, transparent 60%, rgba(0,0,0,0.45))" }} />
-        {/* Availability badge */}
-        <div className="absolute top-3 left-3">
-          <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
-            style={{ background: `${cat.glow}`, border: `1px solid ${cat.border}`, color: cat.accent, backdropFilter: "blur(4px)" }}>
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cat.accent }} />
-            {t.available}
-          </span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 p-6 flex flex-col justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "var(--font-gothic)", color: "#e8d5b0" }}>
-            {game.name[lang]}
-          </h3>
-          <p className="text-sm leading-relaxed" style={{ color: "#7a6a5a" }}>
-            {game.description[lang]}
-          </p>
-        </div>
-        <div className="space-y-4">
-          {/* Meta */}
-          <div className="flex items-center gap-4 text-xs" style={{ color: "#4a3a2a" }}>
-            <span>👥 {game.minPlayers}–{game.maxPlayers} {t.players}</span>
-            <span>⏱ {game.estimatedTime}</span>
-          </div>
-          {/* Actions */}
-          <div className="flex gap-2">
-            <Link
-              href={`/guide/${game.id}`}
-              className="btn-gothic-secondary px-4 py-2.5 rounded-xl text-sm font-medium no-underline flex items-center gap-2"
-            >
-              <GrimoireIcon />
-              {lang === "en" ? "Guide" : "วิธีเล่น"}
-            </Link>
-            <Link
-              href={`/session/create?game=${game.id}`}
-              className="btn-gothic-primary flex-1 py-2.5 rounded-xl text-sm font-semibold no-underline text-center"
-            >
-              {t.playNow} →
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -394,7 +323,7 @@ export default function HomePage() {
 
         {CATEGORIES.map((cat) => {
           const catGames = GAMES.filter((g) => g.category === cat.id);
-          const isSingle = catGames.length === 1; // used for card grid sizing
+          const isSingle = catGames.length === 1;
 
           return (
             <div key={cat.id}>
@@ -422,11 +351,17 @@ export default function HomePage() {
               </div>
 
               {/* ── Cards ── */}
-              <div className={`grid gap-5 grid-cols-1 sm:grid-cols-2 ${catGames.length >= 3 ? "lg:grid-cols-3" : ""} ${isSingle ? "sm:grid-cols-1 max-w-sm" : ""}`}>
-                {catGames.map((game) => (
-                  <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
-                ))}
-              </div>
+              {isSingle ? (
+                <div className="max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto w-full">
+                  <GameCardStandard game={catGames[0]} lang={lang} t={t} featured />
+                </div>
+              ) : (
+                <div className={`grid gap-5 grid-cols-1 sm:grid-cols-2 ${catGames.length >= 3 ? "lg:grid-cols-3" : ""}`}>
+                  {catGames.map((game) => (
+                    <GameCardStandard key={game.id} game={game} lang={lang} t={t} />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

@@ -309,7 +309,8 @@ function MansionMap({
   const reachable = useMemo(() => {
     if (!isMyTurn || !myState || gs.turn_phase !== "move") return new Set<string>();
     const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
-    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const lanternBonus = gs.phase === "explore" && (myState.items ?? []).includes("lantern") ? 1 : 0;
+    const effectiveSpeed = (isRestrained ? Math.max(0, myState.speed - 1) : myState.speed) + lanternBonus;
     const movesLeft = effectiveSpeed - gs.moves_used;
     if (movesLeft <= 0) return new Set<string>();
     return getReachable(gs.placed_tiles, myState.floor, myState.x, myState.y, movesLeft, gs.locked_doors ?? []);
@@ -325,7 +326,8 @@ function MansionMap({
   const explorable = useMemo(() => {
     if (!isMyTurn || !myState || myState.floor !== viewFloor || gs.turn_phase !== "move") return [];
     const isRestrained = (gs.restrained_players ?? []).includes(myPlayerId ?? "");
-    const effectiveSpeed = isRestrained ? Math.max(0, myState.speed - 1) : myState.speed;
+    const lanternBonus = gs.phase === "explore" && (myState.items ?? []).includes("lantern") ? 1 : 0;
+    const effectiveSpeed = (isRestrained ? Math.max(0, myState.speed - 1) : myState.speed) + lanternBonus;
     const movesLeft = effectiveSpeed - gs.moves_used;
     if (movesLeft <= 0) return [];
     return unexplored.filter(({ fromTile }) => {
@@ -397,7 +399,7 @@ function MansionMap({
       </div>
 
       {/* Stairwell hint — visible when player is on a stairwell and has moves */}
-      {isMyTurn && myState && gs.turn_phase === "move" && (((gs.restrained_players ?? []).includes(myPlayerId ?? "") ? Math.max(0, myState.speed - 1) : myState.speed) - gs.moves_used > 0) && (() => {
+      {isMyTurn && myState && gs.turn_phase === "move" && (((gs.restrained_players ?? []).includes(myPlayerId ?? "") ? Math.max(0, myState.speed - 1) : myState.speed) + (gs.phase === "explore" && (myState.items ?? []).includes("lantern") ? 1 : 0) - gs.moves_used > 0) && (() => {
         const curTile = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y);
         const isOnStairwell = curTile && getTile(curTile.tile_id)?.type === "stairwell";
         const otherFloors = ([0,1,2] as Floor[]).filter(f => f !== myState.floor && gs.placed_tiles.some(t => t.floor === f && getTile(t.tile_id)?.type === "stairwell"));
@@ -733,29 +735,53 @@ function GothicDie({ value, rolling }: { value: number; rolling?: boolean }) {
   );
 }
 
-function DiceOverlay({ values, label, onDismiss }: { values: number[]; label: string; onDismiss: () => void }) {
+function DiceOverlay({ values, label, onDismiss, rerollFn }: {
+  values: number[]; label: string; onDismiss: () => void;
+  rerollFn?: () => number[]; // Lucky Coin: if provided, player may reroll once
+}) {
   const [rolling, setRolling] = useState(true);
-  const total = values.reduce((a, b) => a + b, 0);
+  const [currentValues, setCurrentValues] = useState(values);
+  const [rerolled, setRerolled] = useState(false);
+  const total = currentValues.reduce((a, b) => a + b, 0);
 
   useEffect(() => {
     const t = setTimeout(() => setRolling(false), 900);
     return () => clearTimeout(t);
   }, []);
 
+  const handleReroll = () => {
+    if (!rerollFn || rerolled || rolling) return;
+    const newValues = rerollFn();
+    setCurrentValues(newValues);
+    setRerolled(true);
+    setRolling(true);
+    setTimeout(() => setRolling(false), 900);
+  };
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.82)" }} onClick={rolling ? undefined : onDismiss}>
-      <div className="text-center space-y-5 rounded-2xl p-8 animate-slide-up"
+      <div className="text-center space-y-5 rounded-2xl p-8 animate-slide-up" onClick={e => e.stopPropagation()}
         style={{ background: "rgba(8,5,12,0.95)", border: "1px solid rgba(212,175,55,0.2)", backdropFilter: "blur(8px)" }}>
         <p className="text-xs uppercase tracking-widest" style={{ color: "#5a4a3a" }}>{label}</p>
         <div className="flex gap-4 justify-center">
-          {values.map((v, i) => <GothicDie key={i} value={v} rolling={rolling} />)}
+          {currentValues.map((v, i) => <GothicDie key={i} value={v} rolling={rolling} />)}
         </div>
         <p className="text-4xl font-black transition-all duration-300" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)", opacity: rolling ? 0 : 1 }}>
           {total}
         </p>
+        {rerollFn && !rerolled && !rolling && (
+          <button onClick={handleReroll}
+            className="w-full py-2 rounded-xl text-sm font-bold"
+            style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.35)", color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
+            🪙 Reroll — Lucky Coin
+          </button>
+        )}
+        {rerolled && !rolling && (
+          <p className="text-xs" style={{ color: "#d4af37" }}>Lucky Coin used ✓</p>
+        )}
         <p className="text-xs transition-opacity duration-300" style={{ color: "#5a4a3a", opacity: rolling ? 0 : 1 }}>
-          Tap anywhere to continue
+          Tap outside to continue
         </p>
       </div>
     </div>
@@ -1229,7 +1255,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
   const [pendingCard, setPendingCard] = useState<string | null>(null);
   const [viewingItemCard, setViewingItemCard] = useState<string | null>(null);
-  const [diceResult, setDiceResult] = useState<{ values: number[]; label: string } | null>(null);
+  const [diceResult, setDiceResult] = useState<{ values: number[]; label: string; diceCount?: number } | null>(null);
   const [hauntDismissed, setHauntDismissed] = useState(false);
   const [showAttackTargets, setShowAttackTargets] = useState(false);
   const [showRevolverTargets, setShowRevolverTargets] = useState(false);
@@ -1452,6 +1478,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       } else if (cardId === "ancient-book") {
         updatedState.knowledge = Math.min(updatedState.knowledge + 2, char?.knowledgeMax ?? 8);
         newLog.push(addLog("stat", `${playerName} gained +2 Knowledge from Ancient Book`));
+      } else if (cardId === "candle") {
+        updatedState.knowledge = Math.min(updatedState.knowledge + 1, char?.knowledgeMax ?? 8);
+        newLog.push(addLog("stat", `${playerName} gained +1 Knowledge from Black Candle`));
       }
       patch.player_states = { ...gs.player_states, [myPlayerId!]: updatedState };
     }
@@ -2011,9 +2040,9 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       updatedState.might = newMight;
       newLog.push(addLog("stat", `${playerName} used Healing Salve (+2 Might)`));
     } else if (itemId === "smelling-salts") {
-      const newSanity = Math.max(myState.sanity, 2);
+      const newSanity = Math.min(char.sanityMax, myState.sanity + 2);
       updatedState.sanity = newSanity;
-      newLog.push(addLog("stat", `${playerName} used Smelling Salts (Sanity restored to 2)`));
+      newLog.push(addLog("stat", `${playerName} used Smelling Salts (+2 Sanity)`));
     }
 
     await updateGs({
@@ -2088,7 +2117,19 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       }} />}
 
       {/* Dice overlay */}
-      {diceResult && <DiceOverlay {...diceResult} onDismiss={() => setDiceResult(null)} />}
+      {diceResult && (
+        <DiceOverlay
+          values={diceResult.values}
+          label={diceResult.label}
+          onDismiss={() => setDiceResult(null)}
+          rerollFn={(diceResult.diceCount && isMyTurn && (myState?.items ?? []).includes("lucky-coin")) ? () => {
+            // consume Lucky Coin
+            const newItems = (myState?.items ?? []).filter(id => id !== "lucky-coin");
+            updateGs({ player_states: { ...gs.player_states, [myPlayerId!]: { ...myState!, items: newItems } } });
+            return rollDice(diceResult.diceCount!);
+          } : undefined}
+        />
+      )}
 
       {/* Combat result overlay */}
       {combatResult && <CombatOverlay result={combatResult} onDismiss={() => setCombatResult(null)} />}
@@ -2398,7 +2439,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                       onClick={() => {
                         const rolls = rollDice(Math.max(1, myState!.speed));
                         const total = rolls.reduce((a, b) => a + b, 0);
-                        setDiceResult({ values: rolls, label: total >= 4
+                        setDiceResult({ values: rolls, diceCount: Math.max(1, myState!.speed), label: total >= 4
                           ? `🏃 Garden Escape — ${total} ≥ 4! You escaped! Declare Heroes Win if all needed heroes are out.`
                           : `🏃 Garden Escape — ${total} < 4. Not fast enough — try again next turn.` });
                       }}
@@ -2419,7 +2460,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                       onClick={() => {
                         const rolls = rollDice(Math.max(1, myState!.might));
                         const total = rolls.reduce((a, b) => a + b, 0);
-                        setDiceResult({ values: rolls, label: total >= 4
+                        setDiceResult({ values: rolls, diceCount: Math.max(1, myState!.might), label: total >= 4
                           ? `💪 Vault Break — ${total} ≥ 4! You broke through! Declare Heroes Win if 3 heroes have escaped.`
                           : `💪 Vault Break — ${total} < 4. Not strong enough — try again next turn.` });
                       }}
