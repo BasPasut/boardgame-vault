@@ -112,9 +112,9 @@ function GameCardStandard({ game, lang, t }: { game: GameConfig; lang: Lang; t: 
         {/* Availability badge */}
         <div className="absolute top-3 left-3">
           {game.available ? (
-            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
-              style={{ background: `${cat.glow}`, border: `1px solid ${cat.border}`, color: cat.accent, backdropFilter: "blur(4px)" }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cat.accent }} />
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold"
+              style={{ background: "rgba(0,0,0,0.55)", border: `1.5px solid ${cat.accent}`, color: cat.accent, backdropFilter: "blur(6px)", boxShadow: `0 0 8px ${cat.accent}55` }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: cat.accent, boxShadow: `0 0 4px ${cat.accent}` }} />
               {t.available}
             </span>
           ) : (
