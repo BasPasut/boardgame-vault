@@ -89,7 +89,7 @@ export const ktcConfig: GameConfig = {
   estimatedTime: "15–30 min",
   available: true,
   hasHost: false,
-  coverImage: null,
+  coverImage: "/images/games/kam-tong-chuom/cover.png",
   cardTheme: "from-emerald-950 via-teal-950 to-cyan-950",
 
   lobby: {
