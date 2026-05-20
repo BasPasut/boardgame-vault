@@ -65,12 +65,6 @@ body {
   100% { transform: translateY(0px); }
 }
 
-@keyframes candle-flicker {
-  0%, 100% { opacity: 1; filter: brightness(1); }
-  25% { opacity: 0.92; filter: brightness(0.95); }
-  50% { opacity: 0.98; filter: brightness(1.05); }
-  75% { opacity: 0.88; filter: brightness(0.9); }
-}
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
@@ -143,9 +137,6 @@ body {
   animation: float-up 4s ease-in-out infinite;
 }
 
-.candle-flicker {
-  animation: candle-flicker 3s ease-in-out infinite;
-}
 
 .pulse-gold {
   animation: pulse-glow 2s ease-in-out infinite;

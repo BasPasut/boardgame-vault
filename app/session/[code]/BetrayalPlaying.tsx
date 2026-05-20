@@ -85,11 +85,6 @@ function rollDice(n: number): number[] {
 
 /** Same weighted distribution — used for animation frame randomisation */
 function randomBetrayalFace(): number { return rollOneBetrayalDie(); }
-function rollD6(n: number): number {
-  let sum = 0;
-  for (let i = 0; i < n; i++) sum += Math.floor(Math.random() * 6) + 1;
-  return sum;
-}
 
 // ─── Stat Bar ─────────────────────────────────────────────────────────────────
 function StatBar({ label, value, max, color, flash }: { label: string; value: number; max: number; color: string; flash?: { delta: number } }) {
