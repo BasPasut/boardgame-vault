@@ -376,7 +376,7 @@ export default function HomePage() {
                 BoardgameVault
               </span>
             </div>
-            <p className="text-xs text-center sm:text-left" style={{ color: "#3a2a1a", maxWidth: 220 }}>
+            <p className="text-xs text-center sm:text-left" style={{ color: "#7a6a5a", maxWidth: 220 }}>
               Bringing physical games to the digital realm
             </p>
           </div>
@@ -387,25 +387,25 @@ export default function HomePage() {
               <p className="text-lg font-black" style={{ color: "#d4af37", fontFamily: "var(--font-gothic)" }}>
                 {availableCount}
               </p>
-              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+              <p className="text-xs" style={{ color: "#7a6a5a" }}>
                 {lang === "th" ? "เกมพร้อมเล่น" : "Games live"}
               </p>
             </div>
-            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.15)" }} />
+            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.2)" }} />
             <div className="text-center">
               <p className="text-lg font-black" style={{ color: "#7c6cf0", fontFamily: "var(--font-gothic)" }}>
                 ∞
               </p>
-              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+              <p className="text-xs" style={{ color: "#7a6a5a" }}>
                 {lang === "th" ? "ผู้เล่นพร้อมกัน" : "Concurrent players"}
               </p>
             </div>
-            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.15)" }} />
+            <div className="w-px h-8" style={{ background: "rgba(212,175,55,0.2)" }} />
             <div className="text-center">
               <p className="text-lg font-black" style={{ color: "#c0403a", fontFamily: "var(--font-gothic)" }}>
                 Free
               </p>
-              <p className="text-xs" style={{ color: "#3a2a1a" }}>
+              <p className="text-xs" style={{ color: "#7a6a5a" }}>
                 {lang === "th" ? "ไม่มีค่าใช้จ่าย" : "Always"}
               </p>
             </div>
@@ -414,10 +414,10 @@ export default function HomePage() {
 
         {/* Bottom strip */}
         <div className="max-w-7xl mx-auto mt-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p className="text-xs" style={{ color: "#2a1a1a" }}>
+          <p className="text-xs" style={{ color: "#5a4a3a" }}>
             © {new Date().getFullYear()} BoardgameVault · No boxes required.
           </p>
-          <div className="flex items-center gap-1" style={{ color: "#2a1a1a" }}>
+          <div className="flex items-center gap-1" style={{ color: "#5a4a3a" }}>
             <GrimoireIcon />
             <span className="text-xs ml-1">
               {lang === "th" ? "เพิ่มเกมใหม่เร็วๆ นี้" : "More games coming soon"}
