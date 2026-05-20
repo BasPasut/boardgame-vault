@@ -1477,15 +1477,30 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
     if (movesLeft <= 0) patch.turn_phase = "action";
 
-    await updateGs(patch);
-
-    // Trigger card popup — tile is already marked drawn in the patch above
+    // Trigger card popup — reshuffle discard into deck if exhausted (physical game rule)
     if (isCardTile) {
-      let cardId: string | null = null;
-      if (def!.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
-      if (def!.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
-      if (def!.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
+      type DeckKey    = "item_deck"    | "omen_deck"    | "event_deck";
+      type DiscardKey = "item_discard" | "omen_discard" | "event_discard";
+      const t = def!.type as "item" | "omen" | "event";
+      const deckKey    = `${t}_deck`    as DeckKey;
+      const discardKey = `${t}_discard` as DiscardKey;
+      let deck    = gs[deckKey]    as string[];
+      let discard = gs[discardKey] as string[];
+
+      if (deck.length === 0 && discard.length > 0) {
+        deck    = shuffle([...discard]);
+        discard = [];
+        // Include reshuffle in the same DB write so all clients see it atomically
+        patch[deckKey]    = deck;
+        patch[discardKey] = discard;
+        patch.event_log = [...(patch.event_log ?? gs.event_log), addLog("system", `${t} deck exhausted — discard reshuffled 🔀`)].slice(-30);
+      }
+
+      const cardId = deck[0] ?? null;
+      await updateGs(patch);
       if (cardId) setPendingCard(cardId);
+    } else {
+      await updateGs(patch);
     }
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
@@ -1581,24 +1596,37 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       await new Promise<void>(res => setTimeout(res, 250));
     }
 
-    playSfx("/audio/betrayal/sfx/tile-reveal.mp3");
-    await updateGs({
+    // Reshuffle discard into deck if exhausted (physical game rule)
+    const revealPatch: Partial<BetrayalGameState> = {
       placed_tiles: newTiles,
       remaining_tiles: newRemaining,
       player_states: newPlayerStates,
-      moves_used: myState.speed, // exploring costs all remaining moves
+      moves_used: myState.speed,
       turn_phase: "action",
       event_log: newLog.slice(-30),
-    });
-
-    // Trigger card draw for the newly revealed tile
+    };
+    let revealCardId: string | null = null;
     if (willDrawCard) {
-      let cardId: string | null = null;
-      if (newDef!.type === "item"  && gs.item_deck.length  > 0) cardId = gs.item_deck[0];
-      if (newDef!.type === "omen"  && gs.omen_deck.length  > 0) cardId = gs.omen_deck[0];
-      if (newDef!.type === "event" && gs.event_deck.length > 0) cardId = gs.event_deck[0];
-      if (cardId) setPendingCard(cardId);
+      type DeckKey    = "item_deck"    | "omen_deck"    | "event_deck";
+      type DiscardKey = "item_discard" | "omen_discard" | "event_discard";
+      const t = newDef!.type as "item" | "omen" | "event";
+      const deckKey    = `${t}_deck`    as DeckKey;
+      const discardKey = `${t}_discard` as DiscardKey;
+      let deck    = gs[deckKey]    as string[];
+      let discard = gs[discardKey] as string[];
+      if (deck.length === 0 && discard.length > 0) {
+        deck    = shuffle([...discard]);
+        discard = [];
+        revealPatch[deckKey]    = deck;
+        revealPatch[discardKey] = discard;
+        revealPatch.event_log   = [...newLog, addLog("system", `${t} deck exhausted — discard reshuffled 🔀`)].slice(-30);
+      }
+      revealCardId = deck[0] ?? null;
     }
+
+    playSfx("/audio/betrayal/sfx/tile-reveal.mp3");
+    await updateGs(revealPatch);
+    if (revealCardId) setPendingCard(revealCardId);
   }, [isMyTurn, myState, gs, myPlayerId, players, addLog, updateGs, playSfx]);
 
   // ── Draw card (resolve pending card) ─────────────────────────────────────
@@ -1607,7 +1635,11 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const deckKey = `${cardType}_deck` as "item_deck" | "omen_deck" | "event_deck";
     const discardKey = `${cardType}_discard` as "item_discard" | "omen_discard" | "event_discard";
 
-    const newDeck = gs[deckKey].slice(1);
+    // Reshuffle discard if deck somehow empty at confirm time (race condition safety)
+    const liveDeck = gs[deckKey].length > 0
+      ? gs[deckKey]
+      : shuffle([...gs[discardKey]].filter(id => id !== cardId));
+    const newDeck    = liveDeck.slice(1);
     const newDiscard = [cardId, ...gs[discardKey]];
     const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
     const newLog = [...gs.event_log, addLog("card_draw", `${playerName} drew ${getCard(cardId)?.name}`)];
