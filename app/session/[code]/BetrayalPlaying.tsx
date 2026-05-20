@@ -1685,6 +1685,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
       if (rollSum < newOmenCount) {
         playSfx("/audio/betrayal/sfx/haunt-begin.mp3");
+        setTimeout(() => playSfx("/audio/betrayal/sfx/monster-roar.mp3"), 2200);
         const currentTile = tileAt(gs.placed_tiles, myState.floor, myState.x, myState.y);
         const haunt = findHaunt(cardId, currentTile?.tile_id ?? "");
         // Pick traitor: exclude triggerer and already-traitors
@@ -2113,7 +2114,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     let newPlayerStates = { ...gs.player_states };
     const monsterLog: typeof gs.event_log = [];
 
-    if (isHost && gs.phase === "haunt" && newMonsters.length > 0) {
+    // Monster moves once per full round (when turn wraps back to player 0)
+    const completedRound = nextIndex <= gs.current_turn_index;
+
+    if (isHost && gs.phase === "haunt" && newMonsters.length > 0 && completedRound) {
       // Heroes the monster can target (alive, not traitor, no Holy Symbol protection)
       const heroIds = gs.turn_order.filter(id => {
         const ps = gs.player_states[id];
@@ -2121,11 +2125,10 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       });
       // Heroes protected by Holy Symbol — monster cannot enter their tile
       const protectedIds = new Set(heroIds.filter(id => (gs.player_states[id]?.items ?? []).includes("holy-symbol")));
-      // Targetable heroes (monster chases only unprotected ones)
       const targetableHeroes = heroIds.filter(id => !protectedIds.has(id));
 
+      let monsterMoved = false;
       newMonsters = newMonsters.map(monster => {
-        // Find nearest targetable hero (Manhattan as heuristic, BFS confirms reachability)
         let nearest: { id: string; ps: PlayerGameState } | null = null;
         let nearestDist = Infinity;
         for (const hid of targetableHeroes) {
@@ -2134,9 +2137,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           const dist = Math.abs(ps.x - monster.x) + Math.abs(ps.y - monster.y) + (ps.floor !== monster.floor ? 10 : 0);
           if (dist < nearestDist) { nearestDist = dist; nearest = { id: hid, ps }; }
         }
-        if (!nearest) return monster; // all heroes protected — monster stays
+        if (!nearest) return monster;
 
-        // BFS one step toward nearest hero
         const path = findPath(
           gs.placed_tiles,
           monster.floor, monster.x, monster.y,
@@ -2144,14 +2146,20 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           gs.locked_doors ?? [],
         );
         if (!path || path.length === 0) return monster;
-        const next = path[0]; // one step only
+        const next = path[0];
+        monsterMoved = true;
         return { ...monster, floor: next.floor, x: next.x, y: next.y };
       });
+
+      if (monsterMoved) {
+        playSfx("/audio/betrayal/sfx/monster-stomp.mp3");
+        monsterLog.push(addLog("system", "☠ Something heavy moves in the dark..."));
+      }
 
       // Deal damage to unprotected heroes sharing a tile with the monster
       for (const monster of newMonsters) {
         for (const hid of heroIds) {
-          if (protectedIds.has(hid)) continue; // Holy Symbol blocks damage
+          if (protectedIds.has(hid)) continue;
           const ps = newPlayerStates[hid];
           if (!ps || ps.is_dead) continue;
           if (ps.floor === monster.floor && ps.x === monster.x && ps.y === monster.y) {
@@ -2178,7 +2186,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       monsters: newMonsters,
       ...(monsterLog.length > 0 ? { player_states: newPlayerStates, event_log: newLog } : {}),
     });
-  }, [isMyTurn, isHost, gs, players, updateGs, addLog]);
+  }, [isMyTurn, isHost, gs, players, updateGs, addLog, playSfx]);
 
   // ── Use item (consumables) ────────────────────────────────────────────────
   const handleUseItem = useCallback(async (itemId: string) => {
