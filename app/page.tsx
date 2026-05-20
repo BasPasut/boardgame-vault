@@ -352,7 +352,7 @@ export default function HomePage() {
 
               {/* ── Cards ── */}
               {isSingle ? (
-                <div className="max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto w-full">
+                <div className="max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg w-full">
                   <GameCardStandard game={catGames[0]} lang={lang} t={t} featured />
                 </div>
               ) : (
