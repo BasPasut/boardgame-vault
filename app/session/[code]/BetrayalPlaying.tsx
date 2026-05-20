@@ -2085,7 +2085,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
 
       {/* Item card viewer (tap item chip to inspect) */}
       {viewingItemCard && (
-        <CardOverlay cardId={viewingItemCard} lang={lang} onDismiss={() => setViewingItemCard(null)} />
+        <CardOverlay cardId={viewingItemCard} lang={lang} onDismiss={() => setViewingItemCard(null)} startRevealed />
       )}
 
       {/* Death popup */}
