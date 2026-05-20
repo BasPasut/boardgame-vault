@@ -1008,7 +1008,7 @@ function SessionRoom() {
                         ⚡{char.speed} ⚔{char.might} ◈{char.sanity} 📖{char.knowledge}
                       </div>
                       <div className="text-xs italic leading-tight mt-1 line-clamp-2" style={{ color: "#4a3a2a" }}>
-                        {char.trait}
+                        {char.trait[lang]}
                       </div>
                       {isSelectedByMe && (
                         <div className="absolute top-1.5 right-1.5 text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(212,175,55,0.25)", color: "#d4af37" }}>✓</div>

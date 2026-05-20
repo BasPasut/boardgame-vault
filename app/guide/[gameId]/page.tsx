@@ -479,7 +479,7 @@ const STAT_COLOR: Record<string, string> = {
   speed: "#3b82f6", might: "#ef4444", sanity: "#a855f7", knowledge: "#22c55e",
 };
 
-function CharacterCard({ char }: { char: CharacterDefinition }) {
+function CharacterCard({ char, lang }: { char: CharacterDefinition; lang: "en" | "th" }) {
   const [imgErr, setImgErr] = useState(false);
   const CHAR_EMOJI: Record<string, string> = {
     "father-karras": "✝️", "professor-ashwood": "📚", "lady-blackwood": "🌹",
@@ -510,7 +510,7 @@ function CharacterCard({ char }: { char: CharacterDefinition }) {
         </div>
       </div>
       <div className="p-4 space-y-2">
-        <p className="text-xs italic leading-snug mb-3" style={{ color: "#7a6a5a" }}>&ldquo;{char.trait}&rdquo;</p>
+        <p className="text-xs italic leading-snug mb-3" style={{ color: "#7a6a5a" }}>&ldquo;{char.trait[lang]}&rdquo;</p>
         {stats.map(s => (
           <div key={s.key} className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs w-8 flex-shrink-0 font-mono" style={{ color: STAT_COLOR[s.key] }}>{s.label}</span>
@@ -730,7 +730,7 @@ function GuideContent() {
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {guide.characters.map(char => (
-                <CharacterCard key={char.id} char={char} />
+                <CharacterCard key={char.id} char={char} lang={lang} />
               ))}
             </div>
           </section>

@@ -2630,7 +2630,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm truncate" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>{myChar.name}</p>
-                  <p className="text-xs italic leading-snug line-clamp-3" style={{ color: "#5a4a3a" }}>{myChar.trait}</p>
+                  <p className="text-xs italic leading-snug line-clamp-3" style={{ color: "#5a4a3a" }}>{myChar.trait[lang]}</p>
                 </div>
                 {myState.is_traitor && (
                   <span className="ml-auto flex-shrink-0 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}>Traitor</span>

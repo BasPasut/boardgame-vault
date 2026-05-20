@@ -47,7 +47,7 @@ export interface CharacterDefinition {
   mightMin: number; mightMax: number;
   sanityMin: number; sanityMax: number;
   knowledgeMin: number; knowledgeMax: number;
-  trait: string; // flavour text
+  trait: { en: string; th: string }; // flavour text
 }
 
 export interface CardDefinition {
