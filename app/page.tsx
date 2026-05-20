@@ -318,7 +318,7 @@ export default function HomePage() {
           <h2 className="text-3xl font-black tracking-widest uppercase" style={{ fontFamily: "var(--font-gothic)", color: "#d4af37" }}>
             {t.vaultTitle}
           </h2>
-          <p className="mt-2 text-sm" style={{ color: "#5a4a3a" }}>{t.vaultSub}</p>
+          <p className="mt-2 text-sm" style={{ color: "#9a8a7a" }}>{t.vaultSub}</p>
         </div>
 
         {CATEGORIES.map((cat) => {
