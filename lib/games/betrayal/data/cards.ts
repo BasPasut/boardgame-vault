@@ -35,7 +35,7 @@ export const OMEN_CARDS: CardDefinition[] = [
 
 // ─── EVENT CARDS ──────────────────────────────────────────────────────────────
 export const EVENT_CARDS: CardDefinition[] = [
-  { id: "ev-dark-vision",    type: "event", name: "Dark Vision",     image: "/images/games/betrayal/cards/events/event-dark-vision.png",    description: "Roll 2 dice. On 4+: gain +1 Knowledge. On 3 or less: lose 1 Sanity.", flavour: "You see something you cannot unsee." },
+  { id: "ev-dark-vision",    type: "event", name: "Dark Vision",     image: "/images/games/betrayal/cards/events/event-dark-vision.png",    description: "Roll 2 dice. On 3+: gain +1 Knowledge. On 2 or less: lose 1 Sanity.", flavour: "You see something you cannot unsee." },
   { id: "ev-cold-spot",      type: "event", name: "Cold Spot",       image: "/images/games/betrayal/cards/events/event-cold-spot.png",      description: "Lose 1 Speed until the end of your next turn. The cold follows you.", flavour: "Your breath fogs. Nobody else's does." },
   { id: "ev-writing",        type: "event", name: "Writing on the Wall", image: "/images/games/betrayal/cards/events/event-writing-on-wall.png", description: "Roll 1 die. On 3+: gain a clue (draw an item card). On 2 or less: lose 1 Sanity.", flavour: "'LEAVE NOW.' Too late." },
   { id: "ev-locked-door",    type: "event", name: "Locked Door",     image: "/images/games/betrayal/cards/events/event-locked-door.png",    description: "One door in this room is sealed. Requires Might 4+ or the Skeleton Key to open.", flavour: "Locked from the inside." },
