@@ -659,7 +659,13 @@ function CardOverlay({ cardId, onDismiss, lang = "en", startRevealed = false }: 
     ? ({ item: "ไอเทม", omen: "ลางร้าย", event: "เหตุการณ์" }[card.type] ?? card.type)
     : ({ item: "Item", omen: "Omen", event: "Event" }[card.type] ?? card.type);
   const revealLabel   = lang === "th" ? "เปิดไพ่" : "Reveal Card";
-  const dismissLabel  = lang === "th" ? "รับทราบ" : "Understood";
+  const CONSUMABLE_IDS = new Set(["healing-salve", "smelling-salts"]);
+  const isConsumable  = CONSUMABLE_IDS.has(card.id);
+  const dismissLabel  = isConsumable
+    ? (lang === "th" ? "ใช้งาน" : "Use")
+    : (lang === "th" ? "รับทราบ" : "Understood");
+  const displayDescription = (lang === "th" && card.descriptionTh) ? card.descriptionTh : card.description;
+  const displayName        = (lang === "th" && card.nameTh)        ? card.nameTh        : card.name;
   const typeEmoji = { item: "📦", omen: "☠️", event: "👁️" }[card.type] ?? "🃏";
 
   return (
@@ -718,9 +724,9 @@ function CardOverlay({ cardId, onDismiss, lang = "en", startRevealed = false }: 
           {revealed ? (
             <>
               <h2 className="text-xl font-black" style={{ color: "#e8d5b0", fontFamily: "var(--font-gothic)" }}>
-                {card.name}
+                {displayName}
               </h2>
-              <p className="text-sm leading-relaxed" style={{ color: "#c8b89a" }}>{card.description}</p>
+              <p className="text-sm leading-relaxed" style={{ color: "#c8b89a" }}>{displayDescription}</p>
               {card.flavour && (
                 <p className="text-xs italic border-t pt-3" style={{ color: "#5a4a3a", borderColor: "rgba(212,175,55,0.1)" }}>
                   &ldquo;{card.flavour}&rdquo;

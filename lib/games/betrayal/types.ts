@@ -53,9 +53,11 @@ export interface CharacterDefinition {
 export interface CardDefinition {
   id: string;
   name: string;
+  nameTh?: string;
   type: CardType;
   image: string;
-  description: string; // what it does
+  description: string; // what it does (English)
+  descriptionTh?: string; // Thai translation
   flavour?: string;
 }
 
