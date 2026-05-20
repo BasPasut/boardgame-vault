@@ -128,6 +128,8 @@ export function useAmbientAudio(src: string | null) {
       const next = !prev;
       mutedRef.current = next;
       localStorage.setItem(MUTE_KEY, String(next));
+      // Notify useSfx instances on the same page without polling
+      window.dispatchEvent(new Event("bgv:mute"));
       const audio = currentRef.current;
       if (audio && src) {
         if (muteFadeRef.current) clearInterval(muteFadeRef.current);
@@ -160,15 +162,18 @@ export function useSfx() {
     typeof window !== "undefined" ? localStorage.getItem(MUTE_KEY) === "true" : false,
   );
 
-  // Keep mutedRef in sync with storage changes (cross-tab or from useAmbientAudio toggles)
+  // Keep mutedRef in sync with storage changes (cross-tab via "storage" event,
+  // same-tab via the custom "bgv:mute" event dispatched by toggleMute below).
   useEffect(() => {
     const sync = () => {
       mutedRef.current = localStorage.getItem(MUTE_KEY) === "true";
     };
     window.addEventListener("storage", sync);
-    // Also poll periodically to catch same-tab changes
-    const id = setInterval(sync, 500);
-    return () => { window.removeEventListener("storage", sync); clearInterval(id); };
+    window.addEventListener("bgv:mute", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("bgv:mute", sync);
+    };
   }, []);
 
   const playSfx = useCallback((path: string) => {

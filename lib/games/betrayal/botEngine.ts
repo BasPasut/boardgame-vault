@@ -329,7 +329,6 @@ async function executeBotTurn(
         },
         moves_used: botState.speed,
         turn_phase: "action",
-        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("tile_reveal", botId, `🤖 ${botName} discovered "${tileDef?.name}"`),
@@ -364,7 +363,6 @@ async function executeBotTurn(
         },
         moves_used: botState.speed,
         turn_phase: "action",
-        turn_drawn_tiles: [],
         event_log:  [
           ...cur.event_log,
           mkLog("move", botId, `🤖 ${botName} moved to "${tileDef?.name}"`),
@@ -374,7 +372,7 @@ async function executeBotTurn(
       landedTileId  = tile?.tile_id ?? null;
     } else {
       pushBotLog(`${botName}: Nowhere to move — ending turn`);
-      cur = { ...cur, turn_phase: "action", turn_drawn_tiles: [] };
+      cur = { ...cur, turn_phase: "action" };
     }
   }
 

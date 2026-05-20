@@ -19,7 +19,7 @@ import { buildTilePools } from "@/lib/games/betrayal/data/tiles";
 import type { Player, GamePhase, Role } from "@/types/game";
 import { GAME_REGISTRY } from "@/lib/games/registry";
 import { PLAYING_COMPONENTS } from "./gameRegistry";
-import type { HnCGameState } from "./HnCPlaying";
+import type { HnCGameState } from "@/lib/games/hues-and-cues/types";
 import { Suspense } from "react";
 
 // ---------- Icons ----------
@@ -1691,7 +1691,7 @@ function SessionRoom() {
 
           <div className="flex gap-3">
             <Link
-              href="/session/create?game=shadows-over-thornwick"
+              href={`/session/create?game=${dbSession?.game_id ?? "shadows-over-thornwick"}`}
               className="btn-gothic-primary flex-1 py-4 rounded-xl font-bold text-lg text-center no-underline block"
               style={{ fontFamily: "var(--font-gothic)" }}
             >
