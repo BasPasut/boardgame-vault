@@ -118,6 +118,17 @@ function MapTile({
 
   const livingHere = playersHere.filter(p => !p.isDead);
   const hasPlayers = livingHere.length > 0;
+  const hasMonster = (monstersHere ?? []).length > 0;
+
+  // Dynamic pin size — all players always shown, shrink to fit
+  const count = livingHere.length;
+  const pinSize = count <= 1 ? 30 : count <= 2 ? 25 : count <= 3 ? 21 : count <= 4 ? 17 : count <= 5 ? 15 : 13;
+  const pinFont = count <= 1 ? 12 : count <= 2 ? 10 : count <= 3 ? 9 : 7;
+  const pinGap  = count <= 3 ? 3 : 1;
+  const pulsePad = count <= 2 ? -5 : -3;
+
+  const monsterBorder = hasMonster ? "2px solid #ef4444" : undefined;
+  const monsterShadow = hasMonster ? "0 0 20px rgba(239,68,68,0.55), inset 0 0 14px rgba(180,0,0,0.18)" : undefined;
 
   return (
     <div
@@ -126,28 +137,28 @@ function MapTile({
       style={{
         width: TILE_PX, height: TILE_PX,
         left: 0, top: 0,
-        border: isMyPosition
+        border: monsterBorder ?? (isMyPosition
           ? "2px solid #d4af37"
           : isReachable
           ? "2px solid rgba(212,175,55,0.5)"
           : hasPlayers
           ? "1px solid rgba(255,255,255,0.18)"
-          : "1px solid rgba(255,255,255,0.08)",
+          : "1px solid rgba(255,255,255,0.08)"),
         borderRadius: 6,
         background: def?.image
           ? `url(${def.image}) center/cover no-repeat`
           : "rgba(30,20,10,0.8)",
-        boxShadow: isMyPosition
+        boxShadow: monsterShadow ?? (isMyPosition
           ? "0 0 14px rgba(212,175,55,0.45)"
           : isReachable
           ? "0 0 12px rgba(212,175,55,0.3)"
           : hasPlayers
           ? "0 0 8px rgba(255,255,255,0.08)"
-          : undefined,
+          : undefined),
         overflow: "hidden",
       }}
     >
-      {/* Type badge + deck count */}
+      {/* Type badge + deck count — top-right */}
       {def?.type && def.type !== "normal" && (
         <div className="absolute top-1 right-1 flex items-center gap-0.5">
           {deckCount !== undefined && deckCount > 0 && (
@@ -166,29 +177,49 @@ function MapTile({
       {tile.doors.east  && <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-l" style={{ background: "rgba(212,175,55,0.6)" }} />}
       {tile.doors.west  && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3 rounded-r" style={{ background: "rgba(212,175,55,0.6)" }} />}
 
-      {/* Player tokens — centered in the tile, above the name bar */}
+      {/* Top-left badges: monster skull + dead player ghosts */}
+      {(hasMonster || playersHere.some(p => p.isDead)) && (
+        <div className="absolute top-1 left-1 flex gap-0.5" style={{ zIndex: 12 }}>
+          {hasMonster && (
+            <div className="relative w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: "#7f1d1d", border: "1.5px solid #ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.9)" }}>
+              <div className="absolute inset-0 rounded-full animate-ping" style={{ background: "rgba(239,68,68,0.45)", animationDuration: "1.2s" }} />
+              <span className="relative" style={{ fontSize: 9, color: "#fca5a5", lineHeight: 1 }}>☠</span>
+            </div>
+          )}
+          {playersHere.filter(p => p.isDead).slice(0, 2).map(({ player }) => (
+            <div key={player.id}
+              className="w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold flex-shrink-0"
+              style={{ background: "#374151", fontSize: 7, color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.15)", opacity: 0.5 }}>
+              ✝
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Player tokens — dynamic sizing, all players shown */}
       {hasPlayers && (
-        <div className="absolute inset-x-0 flex justify-center items-center gap-1 flex-wrap"
-          style={{ top: 4, bottom: 18 }}>
-          {livingHere.slice(0, 4).map(({ player, index }) => {
+        <div className="absolute inset-x-0 flex justify-center items-center flex-wrap"
+          style={{ top: 4, bottom: 18, gap: pinGap, padding: "0 2px" }}>
+          {livingHere.map(({ player, index }) => {
             const isMe      = player.id === myPlayerId;
             const isCurrent = player.id === currentPlayerId;
             return (
               <div key={player.id} className="relative flex-shrink-0">
-                {/* Pulse ring for current-turn player */}
                 {isCurrent && (
-                  <div className="absolute -inset-1.5 rounded-full animate-ping"
-                    style={{ background: playerColor(index), opacity: 0.4 }} />
+                  <div className="absolute rounded-full animate-ping"
+                    style={{ inset: pulsePad, background: playerColor(index), opacity: 0.4 }} />
                 )}
                 <div
-                  className="relative w-7 h-7 rounded-full flex items-center justify-center font-black"
+                  className="relative rounded-full flex items-center justify-center font-black"
                   style={{
+                    width: pinSize, height: pinSize,
+                    fontSize: pinFont,
                     background: playerColor(index),
-                    fontSize: 11,
                     color: "#fff",
                     border: isMe
-                      ? "2px solid #fbbf24"
-                      : "2px solid rgba(255,255,255,0.9)",
+                      ? `${count >= 5 ? 1.5 : 2}px solid #fbbf24`
+                      : `${count >= 5 ? 1 : 2}px solid rgba(255,255,255,0.9)`,
                     boxShadow: isMe
                       ? "0 0 10px rgba(251,191,36,0.9), 0 2px 6px rgba(0,0,0,0.8)"
                       : "0 2px 6px rgba(0,0,0,0.8)",
@@ -200,45 +231,8 @@ function MapTile({
               </div>
             );
           })}
-          {/* "+N more" badge when >4 players on a tile */}
-          {livingHere.length > 4 && (
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-              style={{ background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)", fontSize: 9 }}>
-              +{livingHere.length - 4}
-            </div>
-          )}
         </div>
       )}
-
-      {/* Dead player ghosts — small, faded, top-left */}
-      {playersHere.some(p => p.isDead) && (
-        <div className="absolute top-1 left-1 flex gap-0.5">
-          {playersHere.filter(p => p.isDead).slice(0, 2).map(({ player, index }) => (
-            <div key={player.id}
-              className="w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold"
-              style={{
-                background: "#374151",
-                fontSize: 7,
-                color: "rgba(255,255,255,0.4)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                opacity: 0.5,
-              }}>
-              ✝
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Monster tokens — top-right area, pulsing red */}
-      {(monstersHere ?? []).map((m, i) => (
-        <div key={i} className="absolute" style={{ top: 4, right: i * 16 + 4, zIndex: 10 }}>
-          <div className="animate-ping absolute inset-0 rounded-full" style={{ background: "rgba(220,38,38,0.5)" }} />
-          <div className="relative w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: "#991b1b", border: "2px solid #ef4444", color: "#fca5a5", fontSize: 12, boxShadow: "0 0 8px rgba(239,68,68,0.8)" }}>
-            ☠
-          </div>
-        </div>
-      ))}
 
       {/* Overlay label */}
       <div className="absolute bottom-0 left-0 right-0 text-center px-0.5 py-0.5 leading-tight truncate"
@@ -2120,22 +2114,27 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const monsterLog: typeof gs.event_log = [];
 
     if (isHost && gs.phase === "haunt" && newMonsters.length > 0) {
-      const heroes = gs.turn_order.filter(id => {
+      // Heroes the monster can target (alive, not traitor, no Holy Symbol protection)
+      const heroIds = gs.turn_order.filter(id => {
         const ps = gs.player_states[id];
         return ps && !ps.is_dead && !ps.is_traitor;
       });
+      // Heroes protected by Holy Symbol — monster cannot enter their tile
+      const protectedIds = new Set(heroIds.filter(id => (gs.player_states[id]?.items ?? []).includes("holy-symbol")));
+      // Targetable heroes (monster chases only unprotected ones)
+      const targetableHeroes = heroIds.filter(id => !protectedIds.has(id));
 
       newMonsters = newMonsters.map(monster => {
-        // Find nearest living hero (Manhattan distance as heuristic)
+        // Find nearest targetable hero (Manhattan as heuristic, BFS confirms reachability)
         let nearest: { id: string; ps: PlayerGameState } | null = null;
         let nearestDist = Infinity;
-        for (const hid of heroes) {
+        for (const hid of targetableHeroes) {
           const ps = gs.player_states[hid];
           if (!ps) continue;
           const dist = Math.abs(ps.x - monster.x) + Math.abs(ps.y - monster.y) + (ps.floor !== monster.floor ? 10 : 0);
           if (dist < nearestDist) { nearestDist = dist; nearest = { id: hid, ps }; }
         }
-        if (!nearest) return monster;
+        if (!nearest) return monster; // all heroes protected — monster stays
 
         // BFS one step toward nearest hero
         const path = findPath(
@@ -2145,23 +2144,22 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
           gs.locked_doors ?? [],
         );
         if (!path || path.length === 0) return monster;
-        const next = path[0]; // one step
+        const next = path[0]; // one step only
         return { ...monster, floor: next.floor, x: next.x, y: next.y };
       });
 
-      // Deal damage to heroes sharing a tile with the monster
+      // Deal damage to unprotected heroes sharing a tile with the monster
       for (const monster of newMonsters) {
-        for (const hid of heroes) {
+        for (const hid of heroIds) {
+          if (protectedIds.has(hid)) continue; // Holy Symbol blocks damage
           const ps = newPlayerStates[hid];
           if (!ps || ps.is_dead) continue;
           if (ps.floor === monster.floor && ps.x === monster.x && ps.y === monster.y) {
             const char = getCharacter(ps.character_id);
-            const dmg = 1;
-            const newMight = Math.max(0, ps.might - dmg);
+            const newMight = Math.max(0, ps.might - 1);
             newPlayerStates[hid] = { ...ps, might: newMight };
             const heroName = players.find(p => p.id === hid)?.name ?? "?";
-            monsterLog.push(addLog("stat", `☠ ${monster.name} attacks ${heroName}! -${dmg} Might (now ${newMight}/${char?.mightMax ?? "?"})`));
-            // Check death
+            monsterLog.push(addLog("stat", `☠ ${monster.name} attacks ${heroName}! -1 Might (now ${newMight}/${char?.mightMax ?? "?"})`));
             if (newMight <= 0) {
               newPlayerStates[hid] = { ...newPlayerStates[hid], is_dead: true };
               monsterLog.push(addLog("death", `${heroName} was killed by the creature!`));
