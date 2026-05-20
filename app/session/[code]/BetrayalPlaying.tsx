@@ -12,7 +12,7 @@ import { CHARACTERS, getCharacter } from "@/lib/games/betrayal/data/characters";
 import { ITEM_CARDS, OMEN_CARDS, EVENT_CARDS, getCard, shuffle } from "@/lib/games/betrayal/data/cards";
 import { findHaunt, getHaunt } from "@/lib/games/betrayal/data/haunts";
 import {
-  getReachable, getUnexploredDoors, buildPlacedTile,
+  getReachable, getUnexploredDoors,
   buildStartingTiles, tileAt, findValidRotationMulti,
 } from "@/lib/games/betrayal/logic/mapEngine";
 import type { Player } from "@/types/game";
@@ -1403,13 +1403,15 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       const adj = tileAt(gs.placed_tiles, floor, x + dx, y + dy);
       if (adj && adj.doors[OPP[dir]]) requiredDoors.push(dir);
     }
-    if (requiredDoors.length === 0) requiredDoors.push("south"); // safety fallback
+    // If no adjacent tile has a door toward (x,y) the position is stale — abort.
+    if (requiredDoors.length === 0) return;
 
-    // Try tiles in random order until one satisfies ALL required doors
     const startIdx = Math.floor(Math.random() * pool.length);
     let placed = null;
     let tileId = "";
     let newPool = pool;
+
+    // Phase 1: find a tile that satisfies ALL required doors (full connectivity)
     for (let attempt = 0; attempt < pool.length; attempt++) {
       const idx = (startIdx + attempt) % pool.length;
       const candidate = pool[idx];
@@ -1421,7 +1423,27 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
         break;
       }
     }
-    if (!placed) return; // no tile in pool satisfies all door constraints
+
+    // Phase 2: no tile satisfies all constraints — fall back to satisfying just ONE
+    // required door so the player always has a way back (prevents stuck tiles).
+    if (!placed) {
+      for (const singleReq of requiredDoors) {
+        for (let attempt = 0; attempt < pool.length; attempt++) {
+          const idx = (startIdx + attempt) % pool.length;
+          const candidate = pool[idx];
+          const valid = findValidRotationMulti(candidate, [singleReq]);
+          if (valid) {
+            placed = { tile_id: candidate, floor, x, y, rotation: valid.rotation, doors: valid.doors, revealed_by: myPlayerId! };
+            tileId = candidate;
+            newPool = pool.filter((_, i) => i !== idx);
+            break;
+          }
+        }
+        if (placed) break;
+      }
+    }
+
+    if (!placed) return; // pool exhausted
 
     const newTiles = [...gs.placed_tiles, placed];
     const newRemaining = { ...gs.remaining_tiles, [floor]: newPool };
