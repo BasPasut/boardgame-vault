@@ -134,7 +134,7 @@ export interface BetrayalGameState {
   haunt_objectives: { traitor: string; heroes: string } | null;
   // pending card — drawn this turn, not yet resolved
   pending_card: { type: CardType; card_id: string } | null;
-  // tiles (floor,x,y keys) from which the current player already drew a card this turn
-  turn_drawn_tiles: string[];
+  /** @deprecated never read by game logic — tracked per-player via drawn_tiles */
+  turn_drawn_tiles?: string[];
   monsters: MonsterState[];
 }
