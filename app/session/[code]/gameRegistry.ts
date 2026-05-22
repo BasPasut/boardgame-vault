@@ -35,11 +35,12 @@ export interface CommonPlayingProps {
 }
 
 // ─── Import playing components ────────────────────────────────────────────────
+// Each game lives in its own subfolder: hnc/, ktc/, betrayal/
 
-import { HnCPlaying } from "./HnCPlaying";
-import BetrayalPlaying from "./BetrayalPlaying";
-import KTCPlaying from "./KTCPlaying";
-// import SoTPlaying from "./SoTPlaying";  ← uncomment when SoTPlaying.tsx is extracted
+import { HnCPlaying } from "./hnc/HnCPlaying";
+import BetrayalPlaying from "./BetrayalPlaying";     // main file + betrayal/components/*
+import KTCPlaying from "./ktc/KTCPlaying";
+// import SoTPlaying from "./sot/SoTPlaying";  ← add when built
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
