@@ -138,4 +138,16 @@ export interface BetrayalGameState {
   // pending card — drawn this turn, not yet resolved
   pending_card: { type: CardType; card_id: string } | null;
   monsters: MonsterState[];
+  // Haunt #7 possession: heroId → number of successful possession attempts (1 = possessed, 2 → becomes ally)
+  possessed_heroes?: Record<string, number>;
+  // Generic per-haunt counters:
+  //   "round"                 — full rounds elapsed (haunts 9, 10, 15, 22)
+  //   "blood_drained"         — haunt 21 total Might drained
+  //   "escape_count"          — haunt 4/12 heroes escaped
+  //   "beacon_turns_<pid>"    — haunt 23 consecutive Tower turns for a player
+  //   "marker_<tileKey>"      — haunt 19 ritual marker placed (1 = placed)
+  //   "ritual_progress"       — haunt 16 Crypt turns
+  //   "flood_turn"            — haunt 8 turns since haunt started
+  //   "infected_<pid>"        — haunt 24 infected player (1 = infected)
+  haunt_counters?: Record<string, number>;
 }
