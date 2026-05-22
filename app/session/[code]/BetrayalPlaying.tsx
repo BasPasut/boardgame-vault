@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import NextImage from "next/image";
 import { supabase } from "@/lib/supabase";
@@ -2299,8 +2299,8 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const targetState = gs.player_states[targetId];
     if (!targetState || targetState.is_dead) return;
 
-    const attackerRolls = Array.from({ length: getAttackMight(myState) }, () => Math.floor(Math.random() * 3));
-    const defenderRolls = Array.from({ length: targetState.might }, () => Math.floor(Math.random() * 3));
+    const attackerRolls = rollDice(getAttackMight(myState));
+    const defenderRolls = rollDice(Math.max(1, targetState.might));
     const atkSum = attackerRolls.reduce((a, b) => a + b, 0);
     const defSum = defenderRolls.reduce((a, b) => a + b, 0);
 
@@ -2360,7 +2360,7 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     const targetState = gs.player_states[targetId];
     if (!targetState || targetState.is_dead) return;
 
-    const attackerRolls = rollDice(Math.max(1, myState.might));
+    const attackerRolls = rollDice(getAttackMight(myState));
     const defenderRolls = rollDice(Math.max(1, targetState.might));
     const atkTotal = attackerRolls.reduce((a, b) => a + b, 0);
     const defTotal = defenderRolls.reduce((a, b) => a + b, 0);
@@ -2420,6 +2420,407 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
     await updateGs({ locked_doors: newLocked, player_states: newPlayerStates, turn_phase: "done", event_log: newLog.slice(-30) });
     setShowDynamiteTargets(false);
   }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, playSfx]);
+
+  // ── Haunt-specific actions ────────────────────────────────────────────────
+  // Generic helper: roll and compare to threshold, updating game state accordingly.
+  const handleHauntRoll = useCallback(async (
+    statKey: "might" | "sanity" | "knowledge" | "speed",
+    threshold: number,
+    diceLabel: string,
+    onSuccess: (patch: Partial<BetrayalGameState>, log: BetrayalGameState["event_log"]) => void,
+    onFail?: (patch: Partial<BetrayalGameState>, log: BetrayalGameState["event_log"]) => void,
+  ) => {
+    if (!isMyTurn || !myState) return;
+    const statValue = myState[statKey] ?? 1;
+    const rolls = rollDice(Math.max(1, statValue));
+    const total = rolls.reduce((a, b) => a + b, 0);
+    const success = total >= threshold;
+    const patch: Partial<BetrayalGameState> = {};
+    const log = [...gs.event_log];
+    if (success) onSuccess(patch, log);
+    else if (onFail) onFail(patch, log);
+    setDiceResult({ values: rolls, diceCount: Math.max(1, statValue), label: `${diceLabel} — rolled ${total} (need ${threshold}+) ${success ? "✅ Success!" : "❌ Failed"}` });
+    if (Object.keys(patch).length > 0 || log.length !== gs.event_log.length) {
+      patch.event_log = log.slice(-30);
+      await updateGs(patch);
+    }
+  }, [isMyTurn, myState, gs, updateGs, setDiceResult]);
+
+  // ── Haunt 1 / 16: Crypt Ritual ────────────────────────────────────────────
+  // Haunt 1: heroes with Holy Symbol + Ancient Book roll Knowledge 5+ in Crypt → heroes win.
+  // Haunt 16: hero with Holy Symbol rolls Knowledge 4+ in Crypt → resets traitor's ritual progress.
+  const handleCryptRitual = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const hn = gs.haunt_number;
+
+    if (hn === 1) {
+      // Need Holy Symbol + Ancient Book
+      const hasItems = (myState.items ?? []).includes("holy-symbol") && (myState.items ?? []).includes("ancient-book");
+      if (!hasItems) { alert("You need both the Holy Symbol and the Ancient Book."); return; }
+      await handleHauntRoll("knowledge", 5, "Crypt Ritual (Knowledge 5+)",
+        (patch, log) => {
+          log.push(addLog("haunt", `${playerName} completed the ritual! The spirit is banished — Heroes Win!`));
+          patch.winner = "heroes";
+          patch.phase = "ended";
+        },
+        (_patch, log) => {
+          log.push(addLog("stat", `${playerName} failed the ritual — try again next turn.`));
+        },
+      );
+      if (gs.phase !== "ended") await updateGs({ turn_phase: "done" });
+    } else if (hn === 16) {
+      // Need Holy Symbol only
+      if (!(myState.items ?? []).includes("holy-symbol")) { alert("You need the Holy Symbol."); return; }
+      await handleHauntRoll("knowledge", 4, "Crypt Purification (Knowledge 4+)",
+        (patch, log) => {
+          const counters = { ...(gs.haunt_counters ?? {}) };
+          counters.ritual_progress = 0;
+          patch.haunt_counters = counters;
+          log.push(addLog("stat", `${playerName} purified the Crypt — the traitor's ritual progress is reset!`));
+        },
+        (_patch, log) => {
+          log.push(addLog("stat", `${playerName} failed to purify the Crypt.`));
+        },
+      );
+      await updateGs({ turn_phase: "done" });
+    }
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 3: Parlor Ritual (destroy Black Candle) ──────────────────────────
+  const handleParlorRitual = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    if (!(myState.items ?? []).includes("holy-symbol")) { alert("You need the Holy Symbol."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    // Might 4+ OR has Axe to destroy candle
+    const hasAxe = (myState.items ?? []).includes("axe");
+    await handleHauntRoll("might", hasAxe ? 1 : 4, `Destroy Black Candle (${hasAxe ? "Axe auto-succeeds" : "Might 4+"})`,
+      (_patch, log) => {
+        log.push(addLog("haunt", `${playerName} destroyed the Black Candle with the Holy Symbol! Heroes Win!`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} could not destroy the candle — try again.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 5: Tower Light Beacon ────────────────────────────────────────────
+  const handleTowerBeacon = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const hasLight = (myState.items ?? []).some(id => id === "lantern" || id === "candle" || id === "omen-candle");
+    if (!hasLight) { alert("You need a light source (Lantern or Candle)."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("haunt", `${playerName} lit the beacon in the Tower! The darkness retreats — Heroes Win!`)].slice(-30);
+    playSfx("/audio/betrayal/sfx/haunt-begin.mp3");
+    await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, winner: "heroes", phase: "ended", event_log: newLog } }).eq("code", code);
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, code, playSfx]);
+
+  // ── Haunt 7: Possess a hero ────────────────────────────────────────────────
+  const handlePossessHero = useCallback(async (targetId: string) => {
+    if (!isMyTurn || !myState || !myPlayerId || !myState.is_traitor) return;
+    const targetPs = gs.player_states[targetId];
+    if (!targetPs || targetPs.is_dead) return;
+    // Amulet holder is immune
+    if ((targetPs.items ?? []).includes("amulet")) {
+      await updateGs({ event_log: [...gs.event_log, addLog("stat", `${players.find(p=>p.id===targetId)?.name ?? "?"} is protected by the Amulet — cannot be possessed!`)].slice(-30) });
+      return;
+    }
+    const targetName = players.find(p => p.id === targetId)?.name ?? "?";
+    const rolls = rollDice(Math.max(1, targetPs.sanity));
+    const total = rolls.reduce((a, b) => a + b, 0);
+    const resisted = total >= 4;
+    const counters = { ...(gs.haunt_counters ?? {}) };
+    const possessed = gs.possessed_heroes ?? {};
+    const newLog = [...gs.event_log];
+
+    if (resisted) {
+      newLog.push(addLog("stat", `${targetName} resisted possession (Sanity roll ${total} ≥ 4)!`));
+    } else {
+      const prev = possessed[targetId] ?? 0;
+      const next = prev + 1;
+      if (next >= 2) {
+        // Fully possessed → becomes traitor ally
+        const newStates = { ...gs.player_states, [targetId]: { ...targetPs, is_traitor: true } };
+        newLog.push(addLog("haunt", `${targetName} is fully possessed and joins the traitor!`));
+        setDiceResult({ values: rolls, diceCount: Math.max(1, targetPs.sanity), label: `Possession — ${targetName} rolled ${total} < 4 → FULLY POSSESSED!` });
+        await updateGs({ player_states: newStates, possessed_heroes: { ...possessed, [targetId]: next }, haunt_counters: counters, turn_phase: "done", event_log: newLog.slice(-30) });
+        return;
+      } else {
+        newLog.push(addLog("stat", `${targetName} is partially possessed (${next}/2)! If possessed again, they join the traitor.`));
+      }
+      possessed[targetId] = next;
+    }
+    setDiceResult({ values: rolls, diceCount: Math.max(1, targetPs.sanity), label: `Possession attempt — ${targetName} rolled ${total} (need 4+ to resist)` });
+    await updateGs({ possessed_heroes: possessed, haunt_counters: counters, turn_phase: "done", event_log: newLog.slice(-30) });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs]);
+
+  // ── Haunt 7: Amulet to Tower (hero win) ────────────────────────────────────
+  const handleAmuletToTower = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    if (!(myState.items ?? []).includes("amulet")) { alert("You need the Amulet."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("haunt", `${playerName} brought the Amulet to the Tower — the spirit is sealed! Heroes Win!`)].slice(-30);
+    playSfx("/audio/betrayal/sfx/haunt-begin.mp3");
+    await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, winner: "heroes", phase: "ended", event_log: newLog } }).eq("code", code);
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, code, playSfx]);
+
+  // ── Haunt 8: Vault Seal (Might 5+) ────────────────────────────────────────
+  const handleVaultSeal = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("might", 5, "Seal the Vault (Might 5+)",
+      (_patch, log) => {
+        log.push(addLog("haunt", `${playerName} sealed the Vault — the flood is stopped! Heroes Win!`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} couldn't seal the Vault — not strong enough yet.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 10: Destroy Furnace (Traitor — Might 5+) ────────────────────────
+  const handleFurnaceDestroy = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId || !myState.is_traitor) return;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("might", 5, "Destroy the Furnace (Might 5+)",
+      (_patch, log) => {
+        log.push(addLog("haunt", `${playerName} destroyed the Furnace — darkness falls forever! Traitor Wins!`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} couldn't destroy the Furnace yet.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 11: Burn the Skull in Furnace (Might 4+) ───────────────────────
+  const handleBurnSkull = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    if (!(myState.items ?? []).includes("omen-skull")) { alert("You need the Skull."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("might", 4, "Burn the Skull (Might 4+)",
+      (patch, log) => {
+        // Remove skull from inventory
+        patch.player_states = { ...gs.player_states, [myPlayerId]: { ...myState, items: (myState.items ?? []).filter(id => id !== "omen-skull") } };
+        log.push(addLog("haunt", `${playerName} burned the Skull in the Furnace — the traitor's power is broken! Now fight the traitor normally.`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} failed to destroy the Skull.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 13: Gallery Ritual (2 heroes + Knowledge 4+ same turn) ──────────
+  const handleGalleryRitual = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    // Count heroes on this tile
+    const heroCopresentIds = gs.turn_order.filter(id => {
+      if (id === myPlayerId) return false;
+      const ps = gs.player_states[id];
+      return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+    if (heroCopresentIds.length < 1) { alert("You need at least one other hero in the Gallery."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    // Both me and a partner must roll Knowledge 4+
+    const myRolls = rollDice(Math.max(1, myState.knowledge));
+    const myTotal = myRolls.reduce((a, b) => a + b, 0);
+    const partnerPs = gs.player_states[heroCopresentIds[0]];
+    const partnerRolls = rollDice(Math.max(1, partnerPs.knowledge));
+    const partnerTotal = partnerRolls.reduce((a, b) => a + b, 0);
+    const partnerName = players.find(p => p.id === heroCopresentIds[0])?.name ?? "?";
+    const success = myTotal >= 4 && partnerTotal >= 4;
+    const newLog = [...gs.event_log];
+    newLog.push(addLog("stat", `Gallery Ritual: ${playerName} rolled ${myTotal}, ${partnerName} rolled ${partnerTotal} (both need 4+) → ${success ? "✅ SUCCESS!" : "❌ Failed"}`));
+    if (success) newLog.push(addLog("haunt", "The wedding portrait is destroyed — Heroes Win!"));
+    setDiceResult({ values: [...myRolls, ...partnerRolls], label: `Gallery Ritual — ${playerName}: ${myTotal}, ${partnerName}: ${partnerTotal} (need 4+)` });
+    const patch: Partial<BetrayalGameState> = { turn_phase: "done", event_log: newLog.slice(-30) };
+    if (success) { patch.winner = "heroes"; patch.phase = "ended"; await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...patch } }).eq("code", code); }
+    else await updateGs(patch);
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, code]);
+
+  // ── Haunt 16: Crypt traitor ritual tracking (host-side) ───────────────────
+  // Tracked in handleEndTurn: if traitor starts turn in Crypt → increment ritual_progress
+
+  // ── Haunt 17: Shatter Crystal Ball ────────────────────────────────────────
+  // Two heroes in same room as crystal ball (omen-crystal-ball held by someone) + Knowledge 3+
+  const handleShatterCrystalBall = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    // Check: at least one other hero on same tile
+    const allies = gs.turn_order.filter(id => {
+      if (id === myPlayerId) return false;
+      const ps = gs.player_states[id];
+      return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+    if (allies.length < 1) { alert("You need at least one other hero in the same room."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const partnerName = players.find(p => p.id === allies[0])?.name ?? "?";
+    const myRolls = rollDice(Math.max(1, myState.knowledge));
+    const myTotal = myRolls.reduce((a, b) => a + b, 0);
+    const partnerPs = gs.player_states[allies[0]];
+    const partnerRolls = rollDice(Math.max(1, partnerPs.knowledge));
+    const partnerTotal = partnerRolls.reduce((a, b) => a + b, 0);
+    const success = myTotal >= 3 && partnerTotal >= 3;
+    const newLog = [...gs.event_log];
+    newLog.push(addLog("stat", `Shatter Crystal Ball: ${playerName}: ${myTotal}, ${partnerName}: ${partnerTotal} (both need 3+) → ${success ? "✅ SUCCESS!" : "❌ Failed"}`));
+    if (success) newLog.push(addLog("haunt", "The Crystal Ball shatters — all curses lifted! Heroes Win!"));
+    setDiceResult({ values: [...myRolls, ...partnerRolls], label: `Crystal Ball: ${playerName}: ${myTotal}, ${partnerName}: ${partnerTotal}` });
+    const patch: Partial<BetrayalGameState> = { turn_phase: "done", event_log: newLog.slice(-30) };
+    if (success) { patch.winner = "heroes"; patch.phase = "ended"; await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...patch } }).eq("code", code); }
+    else await updateGs(patch);
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, code]);
+
+  // ── Haunt 19: Place ritual marker (Traitor) ────────────────────────────────
+  const handlePlaceMarker = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId || !myState.is_traitor) return;
+    const key = `marker_${myState.floor},${myState.x},${myState.y}`;
+    const counters = { ...(gs.haunt_counters ?? {}) };
+    if (counters[key]) { alert("A marker is already placed in this room."); return; }
+    counters[key] = 1;
+    const markerCount = Object.keys(counters).filter(k => k.startsWith("marker_")).length;
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("stat", `${playerName} placed a ritual marker (${markerCount}/4). ${markerCount >= 4 ? "The demon is summoned — Traitor Wins!" : ""}`)].slice(-30);
+    if (markerCount >= 4) {
+      await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, haunt_counters: counters, winner: "traitor", phase: "ended", turn_phase: "done", event_log: newLog } }).eq("code", code);
+    } else {
+      await updateGs({ haunt_counters: counters, turn_phase: "done", event_log: newLog });
+    }
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, code]);
+
+  // ── Haunt 19: Destroy ritual marker (Hero — Sanity 4+) ────────────────────
+  const handleDestroyMarker = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const key = `marker_${myState.floor},${myState.x},${myState.y}`;
+    const counters = { ...(gs.haunt_counters ?? {}) };
+    if (!counters[key]) { alert("There is no marker in this room."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    // Holy Symbol auto-destroys
+    const hasHolySymbol = (myState.items ?? []).includes("holy-symbol");
+    if (hasHolySymbol) {
+      delete counters[key];
+      const newLog = [...gs.event_log, addLog("stat", `${playerName} destroyed the ritual marker with the Holy Symbol!`)].slice(-30);
+      await updateGs({ haunt_counters: counters, turn_phase: "done", event_log: newLog });
+      return;
+    }
+    await handleHauntRoll("sanity", 4, "Destroy Marker (Sanity 4+)",
+      (patch, log) => {
+        delete counters[key];
+        patch.haunt_counters = counters;
+        log.push(addLog("stat", `${playerName} destroyed the ritual marker!`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} failed to destroy the marker.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 21: Blood drain (Traitor free action) ────────────────────────────
+  const handleBloodDrain = useCallback(async (targetId: string) => {
+    if (!isMyTurn || !myState || !myPlayerId || !myState.is_traitor) return;
+    const targetPs = gs.player_states[targetId];
+    if (!targetPs || targetPs.is_dead) return;
+    const newMight = Math.max(0, targetPs.might - 1);
+    const counters = { ...(gs.haunt_counters ?? {}) };
+    counters.blood_drained = (counters.blood_drained ?? 0) + 1;
+    const targetName = players.find(p => p.id === targetId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("stat", `Blood drain: ${targetName} loses 1 Might (total drained: ${counters.blood_drained}/10)`)].slice(-30);
+    const newStates = { ...gs.player_states, [targetId]: { ...targetPs, might: newMight, is_dead: isDead(newMight, targetPs.sanity) } };
+    if (counters.blood_drained >= 10) {
+      await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, player_states: newStates, haunt_counters: counters, winner: "traitor", phase: "ended", event_log: [...newLog, addLog("haunt", "The blood price is paid — Traitor Wins!")].slice(-30) } }).eq("code", code);
+    } else {
+      await updateGs({ player_states: newStates, haunt_counters: counters, event_log: newLog });
+    }
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, code]);
+
+  // ── Haunt 21: Library counter-rite (Ancient Book + Knowledge 5+) ──────────
+  const handleLibraryRite = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    if (!(myState.items ?? []).includes("ancient-book")) { alert("You need the Ancient Book."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("knowledge", 5, "Library Counter-Rite (Knowledge 5+)",
+      (_patch, log) => { log.push(addLog("haunt", `${playerName} performed the counter-rite! The bargain is broken — Heroes Win!`)); },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} failed the counter-rite — not enough knowledge yet.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 23: Tower Lantern beacon tracking ────────────────────────────────
+  // Tracked at end of each turn: if hero with Lantern starts turn in Tower → increment beacon_turns_<pid>
+  // Button to manually confirm "I'm in the Tower with Lantern" (visual aid)
+
+  // ── Haunt 25: Entrance Hall anchor (Lucky Coin + Knowledge 4+) ────────────
+  const handleEntranceHallAnchor = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    if (!(myState.items ?? []).includes("lucky-coin")) { alert("You need the Lucky Coin."); return; }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("knowledge", 4, "Anchor the Mansion (Knowledge 4+)",
+      (_patch, log) => { log.push(addLog("haunt", `${playerName} stabilised the convergence! The mansion holds — Heroes Win!`)); },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} failed to anchor the mansion.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 24: Create antidote (Healing Salve + Holy Symbol + Knowledge 4+) ─
+  const handleCreateAntidote = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const items = myState.items ?? [];
+    if (!items.includes("healing-salve") || !items.includes("holy-symbol")) {
+      alert("You need both the Healing Salve and the Holy Symbol."); return;
+    }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    await handleHauntRoll("knowledge", 4, "Create Antidote (Knowledge 4+)",
+      (patch, log) => {
+        const counters = { ...(gs.haunt_counters ?? {}) };
+        counters[`antidote_holder`] = 1;
+        patch.haunt_counters = counters;
+        // Consume Healing Salve
+        patch.player_states = { ...gs.player_states, [myPlayerId]: { ...myState, items: items.filter(id => id !== "healing-salve") } };
+        log.push(addLog("stat", `${playerName} created the antidote! Now share a room with infected heroes to cure them.`));
+      },
+      (_patch, log) => { log.push(addLog("stat", `${playerName} failed to create the antidote.`)); },
+    );
+    await updateGs({ turn_phase: "done" });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs, handleHauntRoll]);
+
+  // ── Haunt 24: Distribute antidote ─────────────────────────────────────────
+  const handleDistributeAntidote = useCallback(async () => {
+    if (!isMyTurn || !myState || !myPlayerId) return;
+    const counters = { ...(gs.haunt_counters ?? {}) };
+    if (!counters["antidote_holder"]) { alert("No antidote has been created yet."); return; }
+    // Find infected heroes in same room
+    const infected = gs.turn_order.filter(id => {
+      if (id === myPlayerId) return false;
+      const ps = gs.player_states[id];
+      return ps && !ps.is_dead && counters[`infected_${id}`] && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+    if (infected.length === 0) { alert("No infected heroes in this room."); return; }
+    const newStates = { ...gs.player_states };
+    const cured: string[] = [];
+    for (const id of infected) {
+      delete counters[`infected_${id}`];
+      cured.push(players.find(p => p.id === id)?.name ?? id);
+    }
+    const playerName = players.find(p => p.id === myPlayerId)?.name ?? "?";
+    const newLog = [...gs.event_log, addLog("stat", `${playerName} cured: ${cured.join(", ")} of the plague!`)].slice(-30);
+    await updateGs({ player_states: newStates, haunt_counters: counters, event_log: newLog });
+  }, [isMyTurn, myState, myPlayerId, gs, players, addLog, updateGs]);
+
+  // ── [State] Possession target picker ─────────────────────────────────────
+  const [showPossessionTargets, setShowPossessionTargets] = useState(false);
+  const [showBloodDrainTargets, setShowBloodDrainTargets] = useState(false);
+
+  // Possession targets: heroes in same room as traitor
+  const possessionTargets = useMemo(() => {
+    if (gs.phase !== "haunt" || !myState?.is_traitor || gs.turn_phase !== "action") return [];
+    return players.filter(p => {
+      if (p.id === myPlayerId) return false;
+      const ps = gs.player_states[p.id];
+      return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+  }, [gs, myState, myPlayerId, players]);
+
+  // Blood drain targets: heroes in same room as traitor
+  const bloodDrainTargets = useMemo(() => {
+    if (gs.phase !== "haunt" || !myState?.is_traitor || gs.turn_phase !== "action") return [];
+    return players.filter(p => {
+      if (p.id === myPlayerId) return false;
+      const ps = gs.player_states[p.id];
+      return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+    });
+  }, [gs, myState, myPlayerId, players]);
 
   // ── End turn ──────────────────────────────────────────────────────────────
   const handleEndTurn = useCallback(async () => {
@@ -2514,23 +2915,176 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
       }
     }
 
-    const newLog = [...gs.event_log, ...monsterLog].slice(-30);
-    const endTurnPatch = {
+    let newCounters = { ...(gs.haunt_counters ?? {}) };
+    let hauntAutoLog: typeof gs.event_log = [];
+    let hauntAutoPatch: Partial<BetrayalGameState> = {};
+
+    // ── Per-round haunt auto-effects (host runs these once per full round) ────
+    if (isHost && gs.phase === "haunt" && completedRound) {
+      newCounters.round = (newCounters.round ?? 0) + 1;
+      const round = newCounters.round;
+      const hn = gs.haunt_number;
+
+      // Haunt 2: traitor lock counter — track turns elapsed (heroes lose if no one escapes in 10)
+      // Haunt 4: traitor heals 1 Might per round
+      if (hn === 4) {
+        const traitorId = gs.traitor_id;
+        if (traitorId && newPlayerStates[traitorId] && !newPlayerStates[traitorId].is_dead) {
+          const traitorPs = newPlayerStates[traitorId];
+          const traitorChar = getCharacter(traitorPs.character_id);
+          const healed = Math.min(traitorPs.might + 1, traitorChar?.mightMax ?? 8);
+          newPlayerStates[traitorId] = { ...traitorPs, might: healed };
+          hauntAutoLog.push(addLog("stat", `☠ The Monster Within heals: Traitor regenerates 1 Might (now ${healed})`));
+        }
+      }
+
+      // Haunt 9: heroes win at round 8 if traitor hasn't won yet
+      if (hn === 9 && round >= 8) {
+        hauntAutoLog.push(addLog("haunt", `Round ${round}: Heroes survived Blood Banquet for 8 rounds — Heroes Win!`));
+        hauntAutoPatch.winner = "heroes";
+        hauntAutoPatch.phase = "ended";
+      }
+
+      // Haunt 10: heroes win at round 10 if furnace not destroyed
+      if (hn === 10 && round >= 10) {
+        hauntAutoLog.push(addLog("haunt", `Round ${round}: Heroes guarded the Furnace for 10 rounds — Heroes Win!`));
+        hauntAutoPatch.winner = "heroes";
+        hauntAutoPatch.phase = "ended";
+      }
+
+      // Haunt 15: heroes win at round 10
+      if (hn === 15 && round >= 10) {
+        hauntAutoLog.push(addLog("haunt", `Round ${round}: Dawn breaks — heroes survived the Nightmare! Heroes Win!`));
+        hauntAutoPatch.winner = "heroes";
+        hauntAutoPatch.phase = "ended";
+      }
+
+      // Haunt 15: sanity drain for traitor's room (traitor applies Sanity drain)
+      if (hn === 15) {
+        const traitorId = gs.traitor_id;
+        if (traitorId && newPlayerStates[traitorId]) {
+          const tps = newPlayerStates[traitorId];
+          for (const [pid, ps] of Object.entries(newPlayerStates)) {
+            if (ps.is_dead || ps.is_traitor || (ps.items ?? []).includes("holy-symbol")) continue;
+            if (ps.floor === tps.floor && ps.x === tps.x && ps.y === tps.y) {
+              const newSanity = Math.max(0, ps.sanity - 1);
+              newPlayerStates[pid] = { ...ps, sanity: newSanity, is_dead: isDead(ps.might, newSanity) };
+              hauntAutoLog.push(addLog("stat", `Nightmare: ${players.find(p => p.id === pid)?.name ?? pid} loses 1 Sanity in the traitor's presence`));
+            }
+          }
+        }
+      }
+
+      // Haunt 22: Kitchen/Dining Room drain
+      if (hn === 22) {
+        const drainTiles = gs.placed_tiles.filter(t => t.tile_id === "kitchen" || t.tile_id === "dining-room");
+        for (const [pid, ps] of Object.entries(newPlayerStates)) {
+          if (ps.is_dead || ps.is_traitor) continue;
+          if (drainTiles.some(t => t.floor === ps.floor && t.x === ps.x && t.y === ps.y)) {
+            const newMight = Math.max(0, ps.might - 1);
+            newPlayerStates[pid] = { ...ps, might: newMight, is_dead: isDead(newMight, ps.sanity) };
+            hauntAutoLog.push(addLog("stat", `The Feast: ${players.find(p => p.id === pid)?.name ?? pid} loses 1 Might in the Kitchen/Dining Room`));
+          }
+        }
+      }
+
+      // Haunt 23: Tower Lantern beacon tracking
+      if (hn === 23) {
+        const towerTiles = gs.placed_tiles.filter(t => t.tile_id === "tower");
+        for (const [pid, ps] of Object.entries(newPlayerStates)) {
+          if (ps.is_dead || ps.is_traitor) continue;
+          const hasLantern = (ps.items ?? []).some(id => id === "lantern" || id === "candle" || id === "omen-candle");
+          if (!hasLantern) { delete newCounters[`beacon_turns_${pid}`]; continue; }
+          const onTower = towerTiles.some(t => t.floor === ps.floor && t.x === ps.x && t.y === ps.y);
+          if (onTower) {
+            newCounters[`beacon_turns_${pid}`] = (newCounters[`beacon_turns_${pid}`] ?? 0) + 1;
+            hauntAutoLog.push(addLog("stat", `${players.find(p=>p.id===pid)?.name ?? pid} holds the beacon in the Tower (${newCounters[`beacon_turns_${pid}`]}/2 turns)`));
+            if (newCounters[`beacon_turns_${pid}`] >= 2) {
+              hauntAutoLog.push(addLog("haunt", "The beacon drives away the drowned child — Heroes Win!"));
+              hauntAutoPatch.winner = "heroes";
+              hauntAutoPatch.phase = "ended";
+            }
+          } else {
+            newCounters[`beacon_turns_${pid}`] = 0; // reset if they leave
+          }
+        }
+      }
+
+      // Haunt 16: Traitor ritual progress (if traitor is in Crypt)
+      if (hn === 16) {
+        const traitorId = gs.traitor_id;
+        if (traitorId && newPlayerStates[traitorId]) {
+          const tps = newPlayerStates[traitorId];
+          const onCrypt = gs.placed_tiles.some(t => t.tile_id === "crypt" && t.floor === tps.floor && t.x === tps.x && t.y === tps.y);
+          if (onCrypt) {
+            newCounters.ritual_progress = (newCounters.ritual_progress ?? 0) + 1;
+            hauntAutoLog.push(addLog("stat", `Ritual progress: traitor in Crypt (${newCounters.ritual_progress}/2 turns required)`));
+            if (newCounters.ritual_progress >= 2) {
+              hauntAutoLog.push(addLog("haunt", "The Resurrection ritual is complete — Traitor Wins!"));
+              hauntAutoPatch.winner = "traitor";
+              hauntAutoPatch.phase = "ended";
+            }
+          }
+        }
+      }
+
+      // Haunt 8: Flood — basement heroes take damage after turn 4
+      if (hn === 8) {
+        newCounters.flood_turn = (newCounters.flood_turn ?? 0) + 1;
+        if (newCounters.flood_turn > 4) {
+          const basementHeroes = Object.entries(newPlayerStates).filter(([, ps]) => ps.floor === 0 && !ps.is_dead && !ps.is_traitor);
+          for (const [pid, ps] of basementHeroes) {
+            const newMight = Math.max(0, ps.might - 3);
+            newPlayerStates[pid] = { ...ps, might: newMight, is_dead: isDead(newMight, ps.sanity) };
+            hauntAutoLog.push(addLog("stat", `Flood: ${players.find(p => p.id === pid)?.name ?? pid} takes 3 Might damage in the flooded basement!`));
+          }
+        }
+      }
+
+      // Haunt 24: Infection spread (infected heroes in same room infect others for 1 turn)
+      if (hn === 24) {
+        const infectedIds = Object.keys(newCounters).filter(k => k.startsWith("infected_")).map(k => k.replace("infected_", ""));
+        for (const infId of infectedIds) {
+          const infPs = newPlayerStates[infId];
+          if (!infPs || infPs.is_dead) continue;
+          // Sanity drain for infected heroes
+          const newSanity = Math.max(0, infPs.sanity - 1);
+          newPlayerStates[infId] = { ...infPs, sanity: newSanity, is_dead: isDead(infPs.might, newSanity) };
+          hauntAutoLog.push(addLog("stat", `Plague: ${players.find(p => p.id === infId)?.name ?? infId} loses 1 Sanity from infection`));
+          // Spread to adjacent players
+          for (const [pid, ps] of Object.entries(newPlayerStates)) {
+            if (pid === infId || ps.is_dead || newCounters[`infected_${pid}`]) continue;
+            if (ps.floor === infPs.floor && ps.x === infPs.x && ps.y === infPs.y) {
+              newCounters[`infected_${pid}`] = 1;
+              hauntAutoLog.push(addLog("stat", `Plague spreads: ${players.find(p => p.id === pid)?.name ?? pid} is now infected!`));
+            }
+          }
+        }
+      }
+    }
+
+    // ── Haunt 4: traitor gets +2 Might bonus on their turn (tracked via UI) ───
+    // Handled in haunt guide text — not a state change
+
+    const newLog = [...gs.event_log, ...monsterLog, ...hauntAutoLog].slice(-30);
+    const endTurnPatch: Partial<BetrayalGameState> = {
       current_turn_index: nextIndex,
       turn_phase: "move" as const,
       moves_used: 0,
       restrained_players: newRestrained,
       chilled_players: newChilled,
       monsters: newMonsters,
-      ...(monsterLog.length > 0 ? { player_states: newPlayerStates, event_log: newLog } : {}),
+      haunt_counters: newCounters,
+      ...(monsterLog.length > 0 || hauntAutoLog.length > 0 ? { player_states: newPlayerStates, event_log: newLog } : {}),
     };
-    // Auto-end: check if all heroes or the traitor died this round
-    if (monsterLog.length > 0) {
-      const autoWinner = checkWinCondition(newPlayerStates, gs.phase);
-      if (autoWinner) {
-        await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...endTurnPatch, winner: autoWinner, phase: "ended" } }).eq("code", code);
-        return;
-      }
+
+    // Check win conditions after auto-effects
+    const autoWinner = hauntAutoPatch.winner ?? (
+      (monsterLog.length > 0 || hauntAutoLog.length > 0) ? checkWinCondition(newPlayerStates, gs.phase) : null
+    );
+    if (autoWinner || hauntAutoPatch.phase === "ended") {
+      await supabase.from("sessions").update({ phase: "ended", game_state: { ...gs, ...endTurnPatch, ...hauntAutoPatch, winner: autoWinner ?? hauntAutoPatch.winner, phase: "ended", event_log: newLog } }).eq("code", code);
+      return;
     }
     await updateGs(endTurnPatch);
   }, [isMyTurn, isHost, gs, players, code, updateGs, addLog, playSfx]);
@@ -2816,6 +3370,14 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
               <span style={{ color: "#ef4444" }}>☠</span>
               <span style={{ color: "#c8b89a" }}>{gs.omen_count}</span>
             </div>
+            {/* Round counter — only during haunt */}
+            {gs.phase === "haunt" && (gs.haunt_counters?.round ?? 0) > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
+                style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
+                <span style={{ color: "#818cf8" }}>⏳</span>
+                <span style={{ color: "#c8b89a" }}>R{gs.haunt_counters?.round ?? 0}</span>
+              </div>
+            )}
             {/* Current turn */}
             <div className="px-2 py-1 rounded-lg text-xs font-bold"
               style={{
@@ -3032,6 +3594,48 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                     })}
                   </div>
                 )}
+                {/* Haunt counter status (round, progress, markers, etc.) */}
+                {(() => {
+                  const counters = gs.haunt_counters ?? {};
+                  const hn = gs.haunt_number;
+                  const rows: React.ReactNode[] = [];
+
+                  if ((counters.round ?? 0) > 0) {
+                    const roundLimit = hn === 9 ? 8 : hn === 10 ? 10 : hn === 15 ? 10 : hn === 22 ? 8 : null;
+                    rows.push(
+                      <div key="round" className="flex items-center gap-1.5">
+                        <span>⏳</span>
+                        <span style={{ color: "#7a6a5a" }}>Rounds elapsed:</span>
+                        <span style={{ color: "#c8b89a" }}>{counters.round}{roundLimit ? `/${roundLimit}` : ""}</span>
+                      </div>
+                    );
+                  }
+                  if (counters.ritual_progress) {
+                    rows.push(<div key="ritual" className="flex items-center gap-1.5"><span>🕯</span><span style={{ color: "#7a6a5a" }}>Traitor Crypt ritual:</span><span style={{ color: "#f59e0b" }}>{counters.ritual_progress}/2 turns</span></div>);
+                  }
+                  if (counters.blood_drained) {
+                    rows.push(<div key="blood" className="flex items-center gap-1.5"><span>🩸</span><span style={{ color: "#7a6a5a" }}>Blood drained:</span><span style={{ color: "#ef4444" }}>{counters.blood_drained}/10 Might</span></div>);
+                  }
+                  const markerCount = Object.keys(counters).filter(k => k.startsWith("marker_")).length;
+                  if (markerCount > 0) {
+                    rows.push(<div key="markers" className="flex items-center gap-1.5"><span>🕯</span><span style={{ color: "#7a6a5a" }}>Ritual markers:</span><span style={{ color: "#f59e0b" }}>{markerCount}/4 placed</span></div>);
+                  }
+                  const infectedIds = Object.keys(counters).filter(k => k.startsWith("infected_"));
+                  if (infectedIds.length > 0) {
+                    const names = infectedIds.map(k => players.find(p => p.id === k.replace("infected_",""))?.name ?? k.replace("infected_","")).join(", ");
+                    rows.push(<div key="infected" className="flex items-center gap-1.5"><span>🦠</span><span style={{ color: "#7a6a5a" }}>Infected:</span><span style={{ color: "#ef4444" }}>{names}</span></div>);
+                  }
+                  if (counters["antidote_holder"]) {
+                    rows.push(<div key="antidote" className="flex items-center gap-1.5"><span>💉</span><span style={{ color: "#22c55e" }}>Antidote created!</span></div>);
+                  }
+                  if (rows.length === 0) return null;
+                  return (
+                    <div className="mt-2 pt-2 space-y-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                      <p className="font-bold uppercase tracking-widest" style={{ color: "#5a4a3a", fontSize: 9 }}>Haunt progress</p>
+                      {rows}
+                    </div>
+                  );
+                })()}
                 </div>}
               </div>
             );
@@ -3341,6 +3945,293 @@ export default function BetrayalPlaying({ code, dbSession, players, myPlayerId, 
                       className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>
                       Cancel
                     </button>
+                  </div>
+                );
+              })()}
+
+              {/* ── Haunt-specific action panels ─────────────────────────── */}
+              {gs.phase === "haunt" && isMyTurn && myState && gs.turn_phase === "action" && (() => {
+                const hn = gs.haunt_number;
+                if (!hn) return null;
+                const buttons: React.ReactNode[] = [];
+                const curTileId = gs.placed_tiles.find(t => t.floor === myState.floor && t.x === myState.x && t.y === myState.y)?.tile_id ?? "";
+                const items = myState.items ?? [];
+                const counters = gs.haunt_counters ?? {};
+
+                // ── Haunt 1: Crypt ritual (heroes) ──────────────────────────
+                if (hn === 1 && !myState.is_traitor && curTileId === "crypt") {
+                  const hasItems = items.includes("holy-symbol") && items.includes("ancient-book");
+                  buttons.push(
+                    <button key="crypt-ritual" onClick={handleCryptRitual}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasItems ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasItems ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasItems ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: hasItems ? 1 : 0.5 }}>
+                      📖 Crypt Ritual — Knowledge 5+ {!hasItems && "(need Holy Symbol + Ancient Book)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 3: Parlor ritual (heroes) ─────────────────────────
+                if (hn === 3 && !myState.is_traitor && curTileId === "parlor") {
+                  const hasHoly = items.includes("holy-symbol");
+                  buttons.push(
+                    <button key="parlor-ritual" onClick={handleParlorRitual}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasHoly ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasHoly ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasHoly ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: hasHoly ? 1 : 0.5 }}>
+                      🕯 Destroy Black Candle (Might 4+) {!hasHoly && "(need Holy Symbol)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 5: Tower beacon (heroes) ───────────────────────────
+                if (hn === 5 && !myState.is_traitor && curTileId === "tower") {
+                  const hasLight = items.some(id => id === "lantern" || id === "candle" || id === "omen-candle");
+                  buttons.push(
+                    <button key="tower-beacon" onClick={handleTowerBeacon}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasLight ? "rgba(251,191,36,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasLight ? "rgba(251,191,36,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasLight ? "#fbbf24" : "#555", fontFamily: "var(--font-gothic)", opacity: hasLight ? 1 : 0.5 }}>
+                      🔦 Light the Tower Beacon {!hasLight && "(need Lantern or Candle)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 7: Possess hero (traitor) ─────────────────────────
+                if (hn === 7 && myState.is_traitor && possessionTargets.length > 0) {
+                  if (!showPossessionTargets) {
+                    buttons.push(
+                      <button key="possess-btn" onClick={() => setShowPossessionTargets(true)}
+                        className="w-full py-2.5 rounded-xl text-sm font-bold"
+                        style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", fontFamily: "var(--font-gothic)" }}>
+                        👻 Possess a Hero (Sanity 4+ to resist)
+                      </button>
+                    );
+                  } else {
+                    buttons.push(
+                      <div key="possess-panel" className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(168,85,247,0.25)" }}>
+                        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#a855f7", fontFamily: "var(--font-gothic)" }}>👻 Possess which hero?</p>
+                        {possessionTargets.map(p => {
+                          const ps = gs.player_states[p.id];
+                          const possCount = (gs.possessed_heroes ?? {})[p.id] ?? 0;
+                          const hasAmulet = (ps?.items ?? []).includes("amulet");
+                          return (
+                            <button key={p.id} onClick={() => { handlePossessHero(p.id); setShowPossessionTargets(false); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left"
+                              style={{ background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", color: "#e8d5b0" }}>
+                              <div className="flex-1"><p className="text-sm font-bold">{p.name}</p>
+                                <p className="text-xs" style={{ color: "#7a6a5a" }}>Sanity {ps?.sanity ?? "?"} · Possessed {possCount}/2{hasAmulet ? " · 🛡 Amulet" : ""}</p></div>
+                              <span style={{ color: "#a855f7" }}>Possess →</span>
+                            </button>
+                          );
+                        })}
+                        <button onClick={() => setShowPossessionTargets(false)} className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>Cancel</button>
+                      </div>
+                    );
+                  }
+                }
+
+                // ── Haunt 7: Amulet to Tower (heroes) ───────────────────────
+                if (hn === 7 && !myState.is_traitor && curTileId === "tower" && items.includes("amulet")) {
+                  buttons.push(
+                    <button key="amulet-tower" onClick={handleAmuletToTower}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      🔮 Deliver Amulet to Tower — Seal the Spirit!
+                    </button>
+                  );
+                }
+
+                // ── Haunt 8: Vault seal (heroes) ────────────────────────────
+                if (hn === 8 && !myState.is_traitor && curTileId === "vault") {
+                  buttons.push(
+                    <button key="vault-seal" onClick={handleVaultSeal}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      💪 Seal the Vault — Stop the Flood (Might 5+)
+                    </button>
+                  );
+                }
+
+                // ── Haunt 10: Destroy Furnace (traitor) ─────────────────────
+                if (hn === 10 && myState.is_traitor && curTileId === "furnace-room") {
+                  buttons.push(
+                    <button key="furnace-destroy" onClick={handleFurnaceDestroy}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                      🔥 Destroy the Furnace (Might 5+)
+                    </button>
+                  );
+                }
+
+                // ── Haunt 11: Burn Skull in Furnace (heroes) ────────────────
+                if (hn === 11 && !myState.is_traitor && curTileId === "furnace-room" && items.includes("omen-skull")) {
+                  buttons.push(
+                    <button key="burn-skull" onClick={handleBurnSkull}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                      💀 Burn the Skull (Might 4+)
+                    </button>
+                  );
+                }
+
+                // ── Haunt 13: Gallery Ritual (heroes) ───────────────────────
+                if (hn === 13 && !myState.is_traitor && curTileId === "gallery") {
+                  const allies = gs.turn_order.filter(id => {
+                    if (id === myPlayerId) return false;
+                    const ps = gs.player_states[id];
+                    return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+                  });
+                  const ready = allies.length >= 1;
+                  buttons.push(
+                    <button key="gallery-ritual" onClick={handleGalleryRitual}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: ready ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${ready ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: ready ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: ready ? 1 : 0.5 }}>
+                      🖼 Destroy Wedding Portrait — Both Knowledge 4+ {!ready && "(need another hero here)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 16: Crypt purification (heroes) ────────────────────
+                if (hn === 16 && !myState.is_traitor && curTileId === "crypt") {
+                  const hasHoly = items.includes("holy-symbol");
+                  buttons.push(
+                    <button key="crypt-purify" onClick={handleCryptRitual}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasHoly ? "rgba(34,197,94,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasHoly ? "rgba(34,197,94,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasHoly ? "#22c55e" : "#555", fontFamily: "var(--font-gothic)", opacity: hasHoly ? 1 : 0.5 }}>
+                      ✝ Purify the Crypt — Reset Ritual (Knowledge 4+) {!hasHoly && "(need Holy Symbol)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 17: Shatter Crystal Ball (heroes) ──────────────────
+                if (hn === 17 && !myState.is_traitor) {
+                  const allies = gs.turn_order.filter(id => {
+                    if (id === myPlayerId) return false;
+                    const ps = gs.player_states[id];
+                    return ps && !ps.is_dead && !ps.is_traitor && ps.floor === myState.floor && ps.x === myState.x && ps.y === myState.y;
+                  });
+                  const ready = allies.length >= 1;
+                  buttons.push(
+                    <button key="shatter-ball" onClick={handleShatterCrystalBall}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: ready ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${ready ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: ready ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: ready ? 1 : 0.5 }}>
+                      🔮 Shatter Crystal Ball — Both Knowledge 3+ {!ready && "(need another hero here)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 19: Place marker (traitor) ─────────────────────────
+                if (hn === 19 && myState.is_traitor) {
+                  const key = `marker_${myState.floor},${myState.x},${myState.y}`;
+                  const alreadyPlaced = !!counters[key];
+                  const markerCount = Object.keys(counters).filter(k => k.startsWith("marker_")).length;
+                  buttons.push(
+                    <button key="place-marker" onClick={handlePlaceMarker} disabled={alreadyPlaced}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: alreadyPlaced ? "rgba(60,60,60,0.1)" : "rgba(239,68,68,0.15)", border: `1px solid ${alreadyPlaced ? "rgba(100,100,100,0.2)" : "rgba(239,68,68,0.4)"}`, color: alreadyPlaced ? "#555" : "#ef4444", fontFamily: "var(--font-gothic)", opacity: alreadyPlaced ? 0.5 : 1 }}>
+                      🕯 Place Ritual Marker ({markerCount}/4 placed) {alreadyPlaced && "— already placed here"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 19: Destroy marker (heroes) ───────────────────────
+                if (hn === 19 && !myState.is_traitor) {
+                  const key = `marker_${myState.floor},${myState.x},${myState.y}`;
+                  const markerHere = !!counters[key];
+                  if (markerHere) {
+                    buttons.push(
+                      <button key="destroy-marker" onClick={handleDestroyMarker}
+                        className="w-full py-2.5 rounded-xl text-sm font-bold"
+                        style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                        🗡 Destroy Ritual Marker — Sanity 4+ {items.includes("holy-symbol") && "(Holy Symbol: auto!)"}
+                      </button>
+                    );
+                  }
+                }
+
+                // ── Haunt 21: Blood drain (traitor) ──────────────────────────
+                if (hn === 21 && myState.is_traitor && bloodDrainTargets.length > 0) {
+                  const drained = counters.blood_drained ?? 0;
+                  if (!showBloodDrainTargets) {
+                    buttons.push(
+                      <button key="blood-drain-btn" onClick={() => setShowBloodDrainTargets(true)}
+                        className="w-full py-2.5 rounded-xl text-sm font-bold"
+                        style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontFamily: "var(--font-gothic)" }}>
+                        🩸 Blood Drain — Free Action ({drained}/10 Might drained)
+                      </button>
+                    );
+                  } else {
+                    buttons.push(
+                      <div key="blood-drain-panel" className="rounded-xl p-3 space-y-2" style={{ background: "rgba(13,8,8,0.95)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#ef4444", fontFamily: "var(--font-gothic)" }}>🩸 Drain which hero?</p>
+                        {bloodDrainTargets.map(p => {
+                          const ps = gs.player_states[p.id];
+                          return (
+                            <button key={p.id} onClick={() => { handleBloodDrain(p.id); setShowBloodDrainTargets(false); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left"
+                              style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#e8d5b0" }}>
+                              <div className="flex-1"><p className="text-sm font-bold">{p.name}</p>
+                                <p className="text-xs" style={{ color: "#7a6a5a" }}>Might {ps?.might ?? "?"}</p></div>
+                              <span style={{ color: "#ef4444" }}>Drain →</span>
+                            </button>
+                          );
+                        })}
+                        <button onClick={() => setShowBloodDrainTargets(false)} className="w-full py-1.5 rounded-lg text-xs" style={{ color: "#5a4a3a" }}>Cancel</button>
+                      </div>
+                    );
+                  }
+                }
+
+                // ── Haunt 21: Library counter-rite (heroes) ──────────────────
+                if (hn === 21 && !myState.is_traitor && curTileId === "library") {
+                  const hasBook = items.includes("ancient-book");
+                  buttons.push(
+                    <button key="library-rite" onClick={handleLibraryRite}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasBook ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasBook ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasBook ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: hasBook ? 1 : 0.5 }}>
+                      📖 Counter-Rite — Knowledge 5+ {!hasBook && "(need Ancient Book)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 24: Create antidote (heroes) ───────────────────────
+                if (hn === 24 && !myState.is_traitor && !counters["antidote_holder"]) {
+                  const hasBoth = items.includes("healing-salve") && items.includes("holy-symbol");
+                  buttons.push(
+                    <button key="create-antidote" onClick={handleCreateAntidote}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasBoth ? "rgba(34,197,94,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasBoth ? "rgba(34,197,94,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasBoth ? "#22c55e" : "#555", fontFamily: "var(--font-gothic)", opacity: hasBoth ? 1 : 0.5 }}>
+                      💉 Create Antidote — Knowledge 4+ {!hasBoth && "(need Healing Salve + Holy Symbol)"}
+                    </button>
+                  );
+                }
+
+                // ── Haunt 24: Distribute antidote (heroes) ───────────────────
+                if (hn === 24 && !myState.is_traitor && counters["antidote_holder"]) {
+                  buttons.push(
+                    <button key="distribute-antidote" onClick={handleDistributeAntidote}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "#22c55e", fontFamily: "var(--font-gothic)" }}>
+                      💉 Distribute Antidote (share room with infected)
+                    </button>
+                  );
+                }
+
+                // ── Haunt 25: Entrance Hall anchor (heroes) ───────────────────
+                if (hn === 25 && !myState.is_traitor && curTileId === "entrance-hall") {
+                  const hasCoin = items.includes("lucky-coin");
+                  buttons.push(
+                    <button key="eh-anchor" onClick={handleEntranceHallAnchor}
+                      className="w-full py-2.5 rounded-xl text-sm font-bold"
+                      style={{ background: hasCoin ? "rgba(168,85,247,0.15)" : "rgba(60,60,60,0.1)", border: `1px solid ${hasCoin ? "rgba(168,85,247,0.4)" : "rgba(100,100,100,0.2)"}`, color: hasCoin ? "#a855f7" : "#555", fontFamily: "var(--font-gothic)", opacity: hasCoin ? 1 : 0.5 }}>
+                      🪙 Anchor the Mansion — Knowledge 4+ {!hasCoin && "(need Lucky Coin)"}
+                    </button>
+                  );
+                }
+
+                if (buttons.length === 0) return null;
+                return (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs font-bold uppercase tracking-widest px-1" style={{ color: "#5a4a3a", fontSize: 9, fontFamily: "var(--font-gothic)" }}>⚡ Haunt Actions</p>
+                    {buttons}
                   </div>
                 );
               })()}
